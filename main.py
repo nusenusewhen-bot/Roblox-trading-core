@@ -1,186 +1,166 @@
 import discord
 from discord.ext import commands
-import config
+from discord.ui import View, Button, Modal, TextInput
+import os
+import datetime
 import io
 
+TOKEN = os.environ["TOKEN"]
+
+# ---------- IDS ----------
+TICKET_CATEGORY_ID = 1469111714955001976
+LOG_CHANNEL_ID = 1469111771137577154
+
+INDEX_MIDDLEMAN_ROLE = 1469111696554594459
+SUPPORT_MIDDLEMAN_ROLE = 1469111692087529484
+FORCE_UNCLAIM_USER = 1298640383688970293
+
+COMMAND_OWNER = 1298640383688970293
+
+# ---------- BOT ----------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-intents.guilds = True
 
 bot = commands.Bot(command_prefix="$", intents=intents)
 
-# ---------------- HELPERS ----------------
 
+# ---------- HELPERS ----------
 def owner_only():
     async def predicate(ctx):
-        return ctx.author.id == config.COMMAND_OWNER
+        return ctx.author.id == COMMAND_OWNER
     return commands.check(predicate)
 
-def is_ticket_channel(channel):
-    return channel.category and channel.category.id == config.TICKET_CATEGORY_ID
 
 def is_staff(member):
-    return any(r.id in (
-        config.INDEX_MIDDLEMAN_ROLE,
-        config.SUPPORT_STAFF_ROLE
-    ) for r in member.roles)
+    return any(
+        r.id in (INDEX_MIDDLEMAN_ROLE, SUPPORT_MIDDLEMAN_ROLE)
+        for r in member.roles
+    )
 
-def make_topic(creator, claimed="none"):
-    return f"{creator} | {claimed}"
 
-def read_topic(channel):
-    if not channel.topic:
-        return None, "none"
-    c, cl = channel.topic.split("|")
-    return int(c.strip()), cl.strip()
-
-# ---------------- TICKET BUTTONS ----------------
-
-class TicketControls(discord.ui.View):
+# ---------- TICKET VIEW ----------
+class TicketControls(View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="Claim", style=discord.ButtonStyle.success)
-    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def claim(self, interaction: discord.Interaction, _):
         if not is_staff(interaction.user):
-            return await interaction.response.send_message("You cannot claim this ticket.", ephemeral=True)
+            return await interaction.response.send_message("❌ No permission.", ephemeral=True)
 
-        creator, claimed = read_topic(interaction.channel)
-        if claimed != "none":
-            return await interaction.response.send_message("Ticket already claimed.", ephemeral=True)
+        topic = interaction.channel.topic or ""
+        if "claimed:" in topic:
+            return await interaction.response.send_message("❌ Already claimed.", ephemeral=True)
 
-        await interaction.channel.edit(topic=make_topic(creator, interaction.user.id))
+        await interaction.channel.edit(topic=topic + f" | claimed:{interaction.user.id}")
 
-        for role_id in (config.INDEX_MIDDLEMAN_ROLE, config.SUPPORT_STAFF_ROLE):
-            role = interaction.guild.get_role(role_id)
-            if role:
+        for role in interaction.guild.roles:
+            if role.id in (INDEX_MIDDLEMAN_ROLE, SUPPORT_MIDDLEMAN_ROLE):
                 await interaction.channel.set_permissions(role, send_messages=False)
 
         await interaction.channel.set_permissions(interaction.user, send_messages=True)
 
-        await interaction.response.send_message(
-            f"{interaction.user.mention} has claimed ticket."
-        )
+        self.claim.style = discord.ButtonStyle.danger
+        await interaction.response.edit_message(view=self)
+        await interaction.channel.send(f"🟢 {interaction.user.mention} has claimed ticket")
 
-    @discord.ui.button(label="Unclaim", style=discord.ButtonStyle.danger)
-    async def unclaim(self, interaction: discord.Interaction, button: discord.ui.Button):
-        creator, claimed = read_topic(interaction.channel)
+    @discord.ui.button(label="Unclaim", style=discord.ButtonStyle.secondary)
+    async def unclaim(self, interaction: discord.Interaction, _):
+        topic = interaction.channel.topic or ""
 
-        if claimed == "none":
-            return await interaction.response.send_message("Ticket is not claimed.", ephemeral=True)
+        if "claimed:" not in topic:
+            return await interaction.response.send_message("❌ Not claimed.", ephemeral=True)
 
-        if interaction.user.id != int(claimed) and interaction.user.id != config.FORCE_UNCLAIM_USER:
-            return await interaction.response.send_message("You cannot unclaim this ticket.", ephemeral=True)
+        claimed_id = int(topic.split("claimed:")[1])
 
-        await interaction.channel.edit(topic=make_topic(creator))
+        if interaction.user.id not in (claimed_id, FORCE_UNCLAIM_USER):
+            return await interaction.response.send_message("❌ You can’t unclaim.", ephemeral=True)
 
-        for role_id in (config.INDEX_MIDDLEMAN_ROLE, config.SUPPORT_STAFF_ROLE):
-            role = interaction.guild.get_role(role_id)
-            if role:
+        await interaction.channel.edit(topic=topic.split(" | claimed:")[0])
+
+        for role in interaction.guild.roles:
+            if role.id in (INDEX_MIDDLEMAN_ROLE, SUPPORT_MIDDLEMAN_ROLE):
                 await interaction.channel.set_permissions(role, send_messages=True)
 
-        await interaction.response.send_message(
-            f"{interaction.user.mention} has unclaimed, any active staff can now claim ticket."
+        self.claim.style = discord.ButtonStyle.success
+        await interaction.response.edit_message(view=self)
+        await interaction.channel.send("🔓 Ticket unclaimed, staff can now claim.")
+
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, _):
+        messages = []
+        async for msg in interaction.channel.history(limit=None, oldest_first=True):
+            messages.append(f"[{msg.created_at}] {msg.author}: {msg.content}")
+
+        transcript = "\n".join(messages)
+        file = discord.File(
+            io.BytesIO(transcript.encode()),
+            filename=f"{interaction.channel.name}.txt"
         )
 
-    @discord.ui.button(label="Close", style=discord.ButtonStyle.secondary)
-    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        creator, claimed = read_topic(interaction.channel)
-
-        if (
-            interaction.user.id != creator
-            and interaction.user.id != (int(claimed) if claimed != "none" else 0)
-            and interaction.user.id != config.FORCE_UNCLAIM_USER
-        ):
-            return await interaction.response.send_message("You cannot close this ticket.", ephemeral=True)
-
-        log_channel = interaction.guild.get_channel(config.LOG_CHANNEL_ID)
-
-        transcript = io.StringIO()
-        async for msg in interaction.channel.history(oldest_first=True):
-            transcript.write(f"[{msg.created_at}] {msg.author}: {msg.content}\n")
-
-        transcript.seek(0)
-        file = discord.File(transcript, filename=f"{interaction.channel.name}.txt")
-
-        if log_channel:
-            await log_channel.send(
-                content=(
-                    f"ticketfile.\n"
-                    f"Created by: <@{creator}>\n"
-                    f"Claimed by: {f'<@{claimed}>' if claimed != 'none' else 'None'}\n"
-                    f"Closed by: {interaction.user.mention}"
-                ),
+        log = interaction.guild.get_channel(LOG_CHANNEL_ID)
+        if log:
+            await log.send(
+                content=f"Transcript for **{interaction.channel.name}**",
                 file=file
             )
 
         await interaction.channel.delete()
 
-# ---------------- MODALS ----------------
 
-class TradeModal(discord.ui.Modal, title="Trade Ticket"):
-    other = discord.ui.TextInput(label="User/ID of the other person")
-    desc = discord.ui.TextInput(label="Description", style=discord.TextStyle.paragraph)
-    ps = discord.ui.TextInput(label="Can both join ps link?", required=False)
+# ---------- MODALS ----------
+class TradeModal(Modal, title="Trade Request"):
+    user = TextInput(label="User / ID of other person", max_length=100)
+    desc = TextInput(label="Description", style=discord.TextStyle.paragraph)
+    ps = TextInput(label="Can both join PS link?", required=False)
 
-    async def on_submit(self, interaction):
-        await create_ticket(interaction, "trade", {
-            "Other User": self.other.value,
-            "Description": self.desc.value,
-            "PS Link": self.ps.value or "N/A"
-        })
+    async def on_submit(self, interaction: discord.Interaction):
+        await create_ticket(interaction, "trade", self)
 
-class IndexModal(discord.ui.Modal, title="Index Ticket"):
-    item = discord.ui.TextInput(label="What would you like to index?")
-    hold = discord.ui.TextInput(label="What are you letting us hold?")
-    obey = discord.ui.TextInput(label="Will you obey the staff commands?")
 
-    async def on_submit(self, interaction):
-        await create_ticket(interaction, "index", {
-            "Indexing": self.item.value,
-            "Holding": self.hold.value,
-            "Rules": self.obey.value
-        })
+class IndexModal(Modal, title="Index Request"):
+    item = TextInput(label="What would you like to index?")
+    hold = TextInput(label="What are you letting us hold?")
+    obey = TextInput(label="Will you obey staff commands?")
 
-class SupportModal(discord.ui.Modal, title="Support Ticket"):
-    issue = discord.ui.TextInput(label="What do you need help with?")
-    proof = discord.ui.TextInput(label="Do you have any proofs?")
-    wait = discord.ui.TextInput(label="Will you wait patiently?")
+    async def on_submit(self, interaction: discord.Interaction):
+        await create_ticket(interaction, "index", self)
+
+
+class SupportModal(Modal, title="Support"):
+    help = TextInput(label="What do you need help with?")
+    proof = TextInput(label="Do you have any proofs?")
+    wait = TextInput(label="Will you wait patiently?")
 
     async def on_submit(self, interaction):
-        await create_ticket(interaction, "support", {
-            "Issue": self.issue.value,
-            "Proof": self.proof.value,
-            "Patience": self.wait.value
-        })
+        await create_ticket(interaction, "support", self)
 
-class ReportModal(discord.ui.Modal, title="Report Ticket"):
-    who = discord.ui.TextInput(label="Who are you reporting?")
-    reason = discord.ui.TextInput(label="What did he do?", style=discord.TextStyle.paragraph)
-    proof = discord.ui.TextInput(label="Do you have any proofs?")
+
+class ReportModal(Modal, title="Report"):
+    user = TextInput(label="Who are you reporting?")
+    reason = TextInput(label="What did he do?", style=discord.TextStyle.paragraph)
+    proof = TextInput(label="Do you have any proofs?")
 
     async def on_submit(self, interaction):
-        await create_ticket(interaction, "report", {
-            "Reported User": self.who.value,
-            "Reason": self.reason.value,
-            "Proof": self.proof.value
-        })
+        await create_ticket(interaction, "report", self)
 
-# ---------------- VIEWS ----------------
 
-class TradeView(discord.ui.View):
-    @discord.ui.button(label="Request", style=discord.ButtonStyle.green)
-    async def req(self, interaction, _):
+# ---------- VIEWS ----------
+class TradeView(View):
+    @discord.ui.button(label="Request", style=discord.ButtonStyle.primary)
+    async def request(self, interaction, _):
         await interaction.response.send_modal(TradeModal())
 
-class IndexView(discord.ui.View):
-    @discord.ui.button(label="Request", style=discord.ButtonStyle.green)
-    async def req(self, interaction, _):
+
+class IndexView(View):
+    @discord.ui.button(label="Request", style=discord.ButtonStyle.primary)
+    async def request(self, interaction, _):
         await interaction.response.send_modal(IndexModal())
 
-class SupportSelect(discord.ui.View):
-    @discord.ui.button(label="Select Ticket", style=discord.ButtonStyle.blurple)
+
+class SupportSelect(View):
+    @discord.ui.button(label="Select", style=discord.ButtonStyle.blurple)
     async def select(self, interaction, _):
         await interaction.response.send_message(
             "Choose ticket type:",
@@ -188,57 +168,56 @@ class SupportSelect(discord.ui.View):
             ephemeral=True
         )
 
-class SupportOptions(discord.ui.View):
-    @discord.ui.button(label="Support", style=discord.ButtonStyle.green)
+
+class SupportOptions(View):
+    @discord.ui.button(label="Support", style=discord.ButtonStyle.success)
     async def support(self, interaction, _):
         await interaction.response.send_modal(SupportModal())
 
-    @discord.ui.button(label="Report", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="Report", style=discord.ButtonStyle.danger)
     async def report(self, interaction, _):
         await interaction.response.send_modal(ReportModal())
 
-# ---------------- TICKET CREATION ----------------
 
-async def create_ticket(interaction, ttype, fields):
+# ---------- TICKET CREATION ----------
+async def create_ticket(interaction, ttype, modal):
     guild = interaction.guild
-    category = guild.get_channel(config.TICKET_CATEGORY_ID)
+    category = guild.get_channel(TICKET_CATEGORY_ID)
 
     channel = await guild.create_text_channel(
-        f"{ttype}-{interaction.user.name}".lower(),
+        f"{ttype}-{interaction.user.name}",
         category=category,
-        topic=make_topic(interaction.user.id)
+        topic=f"creator:{interaction.user.id}"
     )
 
-    role_id = config.SUPPORT_STAFF_ROLE if ttype in ("support", "report") else config.INDEX_MIDDLEMAN_ROLE
+    await channel.set_permissions(interaction.user, view_channel=True, send_messages=True)
 
-    embed = discord.Embed(title=f"{ttype.title()} Ticket", color=discord.Color.green())
-    for k, v in fields.items():
-        embed.add_field(name=k, value=v, inline=False)
+    embed = discord.Embed(title=f"{ttype.title()} Ticket", color=discord.Color.blue())
+    for child in modal.children:
+        embed.add_field(name=child.label, value=child.value, inline=False)
 
-    await channel.send(f"<@&{role_id}>", embed=embed, view=TicketControls())
-    await interaction.response.send_message("Ticket created.", ephemeral=True)
+    await channel.send(embed=embed, view=TicketControls())
+    await interaction.response.send_message("✅ Ticket created.", ephemeral=True)
 
-# ---------------- COMMANDS ----------------
 
+# ---------- COMMANDS ----------
 @bot.command()
 @owner_only()
 async def main(ctx):
     embed = discord.Embed(
-        title="Safe Trading Server",
+        title="Middleman Trading Service",
         description=(
-            "**Found a trade and would like to ensure a safe trading experience?**\n\n"
-            "**What we provide**\n"
-            "• Safe traders between 2 parties\n"
-            "• Fast and easy deals\n\n"
-            "**Important notes**\n"
-            "• Both parties must agree\n"
-            "• Fake tickets = ban\n"
-            "• Follow Discord ToS"
+            "**Need a trusted middleman for your trade?**\n\n"
+            "• Safe middleman service\n"
+            "• Scam prevention\n"
+            "• Verified staff\n\n"
+            "Click **Request** to open a trade ticket."
         ),
         color=discord.Color.blue()
     )
     embed.set_image(url="https://i.ibb.co/JF73d5JF/ezgif-4b693c75629087.gif")
     await ctx.send(embed=embed, view=TradeView())
+
 
 @bot.command()
 @owner_only()
@@ -246,15 +225,16 @@ async def index(ctx):
     embed = discord.Embed(
         title="Indexing Service",
         description=(
-            "Open this ticket if you would like indexing service.\n\n"
-            "• You must pay first\n"
-            "• Be patient\n"
-            "• State your Roblox username"
+            "Open an indexing ticket if you need items indexed.\n\n"
+            "• Payment must be ready\n"
+            "• Follow staff instructions\n"
+            "• Be patient"
         ),
         color=discord.Color.blue()
     )
     embed.set_image(url="https://i.ibb.co/JF73d5JF/ezgif-4b693c75629087.gif")
     await ctx.send(embed=embed, view=IndexView())
+
 
 @bot.command()
 @owner_only()
@@ -263,15 +243,15 @@ async def support(ctx):
         title="Support / Report",
         description=(
             "Hello welcome to support/report.\n\n"
-            "1. Come with proof otherwise ticket will be closed.\n"
-            "2. Staff’s have the last say.\n"
-            "3. Do not be rude.\n"
-            "Thats it."
+            "1. Come with proof\n"
+            "2. Staff has final say\n"
+            "3. Do not be rude\n\n"
+            "Click **Select** below."
         ),
         color=discord.Color.blue()
     )
     await ctx.send(embed=embed, view=SupportSelect())
 
-# ---------------- START ----------------
 
-bot.run(config.TOKEN)
+# ---------- START ----------
+bot.run(TOKEN)
