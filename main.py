@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import config
-from views import MainView, IndexView, SupportView
+import io
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -11,7 +11,7 @@ intents.guilds = True
 bot = commands.Bot(command_prefix="$", intents=intents)
 
 
-# ---------- HELPERS ----------
+# ---------------- HELPERS ----------------
 
 def owner_only():
     async def predicate(ctx):
@@ -21,16 +21,6 @@ def owner_only():
 
 def is_ticket_channel(channel):
     return channel.category and channel.category.id == config.TICKET_CATEGORY_ID
-
-
-def get_ticket_data(channel):
-    if not channel.topic:
-        return None, "none"
-    try:
-        creator, claimed = channel.topic.split("|")
-        return int(creator.strip()), claimed.strip()
-    except:
-        return None, "none"
 
 
 def is_staff(member):
@@ -43,43 +33,154 @@ def is_staff(member):
     )
 
 
-# ---------- EVENTS ----------
-
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}")
+def ticket_topic(creator_id, claimed="none"):
+    return f"{creator_id} | {claimed}"
 
 
-# ---------- MAIN COMMANDS ----------
+def parse_topic(channel):
+    if not channel.topic:
+        return None, "none"
+    c, cl = channel.topic.split("|")
+    return int(c.strip()), cl.strip()
 
-@bot.command()
-@owner_only()
-async def main(ctx):
-    embed = discord.Embed(
-        title="Safe Trading Server",
-        description=(
-            "**Found a trade and want a safe experience?**\n\n"
-            "• Verified middlemen\n"
-            "• Fast & secure\n"
-            "• Fake tickets = ban"
-        ),
-        color=discord.Color.blue()
+
+async def send_ticket_controls(channel):
+    view = TicketControls()
+    await channel.send("Ticket controls:", view=view)
+
+
+# ---------------- TICKET CONTROLS ----------------
+
+class TicketControls(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.success)
+    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_staff(interaction.user):
+            return await interaction.response.send_message("No permission.", ephemeral=True)
+
+        creator, claimed = parse_topic(interaction.channel)
+        if claimed != "none":
+            return await interaction.response.send_message("Already claimed.", ephemeral=True)
+
+        await interaction.channel.edit(topic=ticket_topic(creator, interaction.user.id))
+
+        for role_id in (config.INDEX_MIDDLEMAN_ROLE, config.SUPPORT_STAFF_ROLE):
+            role = interaction.guild.get_role(role_id)
+            if role:
+                await interaction.channel.set_permissions(role, send_messages=False)
+
+        await interaction.channel.set_permissions(interaction.user, send_messages=True)
+        await interaction.response.send_message(
+            f"🟢 {interaction.user.mention} has claimed ticket."
+        )
+
+    @discord.ui.button(label="Unclaim", style=discord.ButtonStyle.danger)
+    async def unclaim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        creator, claimed = parse_topic(interaction.channel)
+
+        if claimed == "none":
+            return await interaction.response.send_message("Not claimed.", ephemeral=True)
+
+        if interaction.user.id != int(claimed) and interaction.user.id != config.FORCE_UNCLAIM_USER:
+            return await interaction.response.send_message("No permission.", ephemeral=True)
+
+        await interaction.channel.edit(topic=ticket_topic(creator))
+
+        for role_id in (config.INDEX_MIDDLEMAN_ROLE, config.SUPPORT_STAFF_ROLE):
+            role = interaction.guild.get_role(role_id)
+            if role:
+                await interaction.channel.set_permissions(role, send_messages=True)
+
+        await interaction.response.send_message(
+            f"🔓 {interaction.user.mention} unclaimed the ticket. Any staff may claim."
+        )
+
+    @discord.ui.button(label="Close", style=discord.ButtonStyle.secondary)
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        creator, claimed = parse_topic(interaction.channel)
+
+        if (
+            interaction.user.id != creator
+            and interaction.user.id != (int(claimed) if claimed != "none" else 0)
+            and interaction.user.id != config.FORCE_UNCLAIM_USER
+        ):
+            return await interaction.response.send_message("No permission.", ephemeral=True)
+
+        log_channel = interaction.guild.get_channel(config.LOG_CHANNEL_ID)
+
+        transcript = io.StringIO()
+        async for msg in interaction.channel.history(oldest_first=True):
+            transcript.write(f"[{msg.created_at}] {msg.author}: {msg.content}\n")
+
+        transcript.seek(0)
+        file = discord.File(transcript, filename=f"{interaction.channel.name}.txt")
+
+        if log_channel:
+            await log_channel.send(
+                content=(
+                    f"**Ticket Closed**\n"
+                    f"Created by: <@{creator}>\n"
+                    f"Claimed by: {f'<@{claimed}>' if claimed != 'none' else 'None'}\n"
+                    f"Closed by: {interaction.user.mention}"
+                ),
+                file=file
+            )
+
+        await interaction.channel.delete()
+
+
+# ---------------- SUPPORT SELECT ----------------
+
+class SupportSelect(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        placeholder="Choose ticket type",
+        options=[
+            discord.SelectOption(label="Support", value="support"),
+            discord.SelectOption(label="Report", value="report"),
+        ]
     )
-    embed.set_image(url="https://i.ibb.co/JF73d5JF/ezgif-4b693c75629087.gif")
-    await ctx.send(embed=embed, view=MainView())
+    async def select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        await create_ticket(interaction, select.values[0])
 
 
-@bot.command()
-@owner_only()
-async def index(ctx):
-    embed = discord.Embed(
-        title="Indexing Service",
-        description="Open a ticket for indexing services.",
-        color=discord.Color.blue()
+# ---------------- TICKET CREATION ----------------
+
+async def create_ticket(interaction, ttype):
+    guild = interaction.guild
+    category = guild.get_channel(config.TICKET_CATEGORY_ID)
+
+    name = f"{ttype}-{interaction.user.name}".lower()
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+    }
+
+    channel = await guild.create_text_channel(
+        name,
+        category=category,
+        overwrites=overwrites,
+        topic=ticket_topic(interaction.user.id)
     )
-    embed.set_image(url="https://i.ibb.co/JF73d5JF/ezgif-4b693c75629087.gif")
-    await ctx.send(embed=embed, view=IndexView())
 
+    role_id = (
+        config.SUPPORT_STAFF_ROLE
+        if ttype in ("support", "report")
+        else config.INDEX_MIDDLEMAN_ROLE
+    )
+
+    await channel.send(f"<@&{role_id}>")
+    await send_ticket_controls(channel)
+
+    await interaction.response.send_message("Ticket created.", ephemeral=True)
+
+
+# ---------------- COMMANDS ----------------
 
 @bot.command()
 @owner_only()
@@ -89,124 +190,26 @@ async def support(ctx):
         description=(
             "Hello welcome to support/report.\n\n"
             "1. Come with proof\n"
-            "2. Staff has last say\n"
+            "2. Staff has the last say\n"
             "3. Do not be rude"
         ),
         color=discord.Color.blue()
     )
-    await ctx.send(embed=embed, view=SupportView())
-
-
-# ---------- TICKET COMMANDS ----------
-
-@bot.command()
-async def add(ctx, member: discord.Member):
-    if not is_ticket_channel(ctx.channel):
-        return
-
-    creator_id, _ = get_ticket_data(ctx.channel)
-
-    if ctx.author.id != creator_id and not is_staff(ctx.author):
-        return await ctx.send("❌ You can't add users to this ticket.")
-
-    await ctx.channel.set_permissions(member, view_channel=True, send_messages=True)
-    await ctx.send(f"✅ {member.mention} added to the ticket.")
+    await ctx.send(embed=embed, view=SupportSelect())
 
 
 @bot.command()
-async def claim(ctx):
-    if not is_ticket_channel(ctx.channel):
-        return
-
-    if not is_staff(ctx.author):
-        return await ctx.send("❌ You cannot claim tickets.")
-
-    creator_id, claimed = get_ticket_data(ctx.channel)
-    if claimed != "none":
-        return await ctx.send("❌ Ticket already claimed.")
-
-    await ctx.channel.edit(topic=f"{creator_id} | {ctx.author.id}")
-
-    for role_id in (config.INDEX_MIDDLEMAN_ROLE, config.SUPPORT_STAFF_ROLE):
-        role = ctx.guild.get_role(role_id)
-        if role:
-            await ctx.channel.set_permissions(role, send_messages=False)
-
-    await ctx.channel.set_permissions(ctx.author, send_messages=True)
-    await ctx.send(f"🟢 {ctx.author.mention} has claimed ticket.")
+@owner_only()
+async def index(ctx):
+    await ctx.send("Click to create index ticket.", view=SupportSelect())
 
 
 @bot.command()
-async def unclaim(ctx):
-    if not is_ticket_channel(ctx.channel):
-        return
-
-    creator_id, claimed = get_ticket_data(ctx.channel)
-
-    if claimed == "none":
-        return await ctx.send("❌ Ticket is not claimed.")
-
-    if ctx.author.id != int(claimed) and ctx.author.id != config.FORCE_UNCLAIM_USER:
-        return await ctx.send("❌ You cannot unclaim this ticket.")
-
-    await ctx.channel.edit(topic=f"{creator_id} | none")
-
-    for role_id in (config.INDEX_MIDDLEMAN_ROLE, config.SUPPORT_STAFF_ROLE):
-        role = ctx.guild.get_role(role_id)
-        if role:
-            await ctx.channel.set_permissions(role, send_messages=True)
-
-    await ctx.send("🔓 Ticket unclaimed. Any active staff can now claim.")
+@owner_only()
+async def main(ctx):
+    await ctx.send("Click to create trade ticket.", view=SupportSelect())
 
 
-@bot.command()
-async def transfer(ctx, member: discord.Member):
-    if not is_ticket_channel(ctx.channel):
-        return
-
-    creator_id, claimed = get_ticket_data(ctx.channel)
-
-    if ctx.author.id != int(claimed) and ctx.author.id != config.FORCE_UNCLAIM_USER:
-        return await ctx.send("❌ You cannot transfer this ticket.")
-
-    if not is_staff(member):
-        return await ctx.send("❌ User is not a valid middleman.")
-
-    await ctx.channel.edit(topic=f"{creator_id} | {member.id}")
-    await ctx.send(f"🔁 Ticket transferred to {member.mention}.")
-
-
-@bot.command()
-async def close(ctx):
-    if not is_ticket_channel(ctx.channel):
-        return
-
-    creator_id, claimed = get_ticket_data(ctx.channel)
-
-    if (
-        ctx.author.id != creator_id
-        and ctx.author.id != (int(claimed) if claimed != "none" else 0)
-        and ctx.author.id != config.FORCE_UNCLAIM_USER
-    ):
-        return await ctx.send("❌ You cannot close this ticket.")
-
-    log_channel = ctx.guild.get_channel(config.LOG_CHANNEL_ID)
-
-    embed = discord.Embed(title="ticketfile.", color=discord.Color.red())
-    embed.add_field(name="Created by", value=f"<@{creator_id}>", inline=False)
-    embed.add_field(
-        name="Claimed by",
-        value=f"<@{claimed}>" if claimed != "none" else "None",
-        inline=False
-    )
-    embed.add_field(name="Closed by", value=ctx.author.mention, inline=False)
-
-    if log_channel:
-        await log_channel.send(embed=embed)
-
-    await ctx.channel.delete()
-
-
-# ---------- START ----------
+# ---------------- START ----------------
 
 bot.run(config.TOKEN)
