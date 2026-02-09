@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Button, Modal, TextInput
 import os
-import datetime
 import io
 
 TOKEN = os.environ["TOKEN"]
@@ -14,7 +13,6 @@ LOG_CHANNEL_ID = 1469111771137577154
 INDEX_MIDDLEMAN_ROLE = 1469111696554594459
 SUPPORT_MIDDLEMAN_ROLE = 1469111692087529484
 FORCE_UNCLAIM_USER = 1298640383688970293
-
 COMMAND_OWNER = 1298640383688970293
 
 # ---------- BOT ----------
@@ -39,13 +37,13 @@ def is_staff(member):
     )
 
 
-# ---------- TICKET VIEW ----------
+# ---------- TICKET CONTROLS ----------
 class TicketControls(View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="Claim", style=discord.ButtonStyle.success)
-    async def claim(self, interaction: discord.Interaction, _):
+    async def claim(self, interaction: discord.Interaction, button: Button):
         if not is_staff(interaction.user):
             return await interaction.response.send_message("❌ No permission.", ephemeral=True)
 
@@ -61,19 +59,17 @@ class TicketControls(View):
 
         await interaction.channel.set_permissions(interaction.user, send_messages=True)
 
-        self.claim.style = discord.ButtonStyle.danger
+        button.style = discord.ButtonStyle.danger
         await interaction.response.edit_message(view=self)
         await interaction.channel.send(f"🟢 {interaction.user.mention} has claimed ticket")
 
     @discord.ui.button(label="Unclaim", style=discord.ButtonStyle.secondary)
     async def unclaim(self, interaction: discord.Interaction, _):
         topic = interaction.channel.topic or ""
-
         if "claimed:" not in topic:
             return await interaction.response.send_message("❌ Not claimed.", ephemeral=True)
 
         claimed_id = int(topic.split("claimed:")[1])
-
         if interaction.user.id not in (claimed_id, FORCE_UNCLAIM_USER):
             return await interaction.response.send_message("❌ You can’t unclaim.", ephemeral=True)
 
@@ -83,9 +79,11 @@ class TicketControls(View):
             if role.id in (INDEX_MIDDLEMAN_ROLE, SUPPORT_MIDDLEMAN_ROLE):
                 await interaction.channel.set_permissions(role, send_messages=True)
 
-        self.claim.style = discord.ButtonStyle.success
+        self.children[0].style = discord.ButtonStyle.success
         await interaction.response.edit_message(view=self)
-        await interaction.channel.send("🔓 Ticket unclaimed, staff can now claim.")
+        await interaction.channel.send(
+            f"🔓 {interaction.user.mention} has unclaimed, any active staff can now claim ticket."
+        )
 
     @discord.ui.button(label="Close", style=discord.ButtonStyle.danger)
     async def close(self, interaction: discord.Interaction, _):
@@ -111,11 +109,11 @@ class TicketControls(View):
 
 # ---------- MODALS ----------
 class TradeModal(Modal, title="Trade Request"):
-    user = TextInput(label="User / ID of other person", max_length=100)
+    user = TextInput(label="User / ID of the other person")
     desc = TextInput(label="Description", style=discord.TextStyle.paragraph)
     ps = TextInput(label="Can both join PS link?", required=False)
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         await create_ticket(interaction, "trade", self)
 
 
@@ -124,7 +122,7 @@ class IndexModal(Modal, title="Index Request"):
     hold = TextInput(label="What are you letting us hold?")
     obey = TextInput(label="Will you obey staff commands?")
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def on_submit(self, interaction):
         await create_ticket(interaction, "index", self)
 
 
@@ -192,29 +190,49 @@ async def create_ticket(interaction, ttype, modal):
 
     await channel.set_permissions(interaction.user, view_channel=True, send_messages=True)
 
-    embed = discord.Embed(title=f"{ttype.title()} Ticket", color=discord.Color.blue())
+    embed = discord.Embed(
+        title=f"{ttype.title()} Ticket",
+        description="Ticket details are below.",
+        color=discord.Color.blue()
+    )
+
     for child in modal.children:
-        embed.add_field(name=child.label, value=child.value, inline=False)
+        embed.add_field(name=child.label, value=child.value or "N/A", inline=False)
 
     await channel.send(embed=embed, view=TicketControls())
     await interaction.response.send_message("✅ Ticket created.", ephemeral=True)
 
 
-# ---------- COMMANDS ----------
+# ---------- COMMAND PANELS ----------
 @bot.command()
 @owner_only()
 async def main(ctx):
     embed = discord.Embed(
         title="Middleman Trading Service",
-        description=(
-            "**Need a trusted middleman for your trade?**\n\n"
-            "• Safe middleman service\n"
-            "• Scam prevention\n"
-            "• Verified staff\n\n"
-            "Click **Request** to open a trade ticket."
-        ),
+        description="Click **Request** below to open a trade ticket.",
         color=discord.Color.blue()
     )
+
+    embed.add_field(
+        name="What we offer",
+        value=(
+            "• Safe middleman service\n"
+            "• Scam prevention\n"
+            "• Verified middlemen"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="Rules",
+        value=(
+            "• No fake tickets\n"
+            "• Both parties must agree\n"
+            "• Follow staff instructions"
+        ),
+        inline=False
+    )
+
     embed.set_image(url="https://i.ibb.co/JF73d5JF/ezgif-4b693c75629087.gif")
     await ctx.send(embed=embed, view=TradeView())
 
@@ -224,14 +242,20 @@ async def main(ctx):
 async def index(ctx):
     embed = discord.Embed(
         title="Indexing Service",
-        description=(
-            "Open an indexing ticket if you need items indexed.\n\n"
-            "• Payment must be ready\n"
-            "• Follow staff instructions\n"
-            "• Be patient"
-        ),
+        description="Click **Request** below to open an indexing ticket.",
         color=discord.Color.blue()
     )
+
+    embed.add_field(
+        name="Requirements",
+        value=(
+            "• Payment must be ready\n"
+            "• Explain what needs indexing\n"
+            "• Follow staff instructions"
+        ),
+        inline=False
+    )
+
     embed.set_image(url="https://i.ibb.co/JF73d5JF/ezgif-4b693c75629087.gif")
     await ctx.send(embed=embed, view=IndexView())
 
@@ -241,15 +265,20 @@ async def index(ctx):
 async def support(ctx):
     embed = discord.Embed(
         title="Support / Report",
-        description=(
-            "Hello welcome to support/report.\n\n"
-            "1. Come with proof\n"
-            "2. Staff has final say\n"
-            "3. Do not be rude\n\n"
-            "Click **Select** below."
-        ),
+        description="Click **Select** below to choose a ticket type.",
         color=discord.Color.blue()
     )
+
+    embed.add_field(
+        name="Rules",
+        value=(
+            "1. Come with proof\n"
+            "2. Staff have final say\n"
+            "3. Do not be rude"
+        ),
+        inline=False
+    )
+
     await ctx.send(embed=embed, view=SupportSelect())
 
 
