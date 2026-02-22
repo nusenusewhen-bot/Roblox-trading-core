@@ -18,6 +18,9 @@ const {
 } = require('discord.js');
 const Database = require('better-sqlite3');
 
+// BOT OWNER ID - Can use all commands
+const BOT_OWNER_ID = '1410632195210481664';
+
 // Initialize Database
 const db = new Database('database.db');
 
@@ -27,7 +30,8 @@ db.exec(`
     guild_id TEXT PRIMARY KEY,
     middleman_role_id TEXT,
     log_channel_id TEXT,
-    ticket_category_id TEXT
+    main_category_id TEXT,
+    support_category_id TEXT
   );
   
   CREATE TABLE IF NOT EXISTS tickets (
@@ -38,6 +42,7 @@ db.exec(`
     other_user_id TEXT,
     description TEXT,
     can_join_ps TEXT,
+    ticket_type TEXT DEFAULT 'main',
     created_at INTEGER
   );
   
@@ -82,20 +87,29 @@ function setLogChannel(guildId, channelId) {
   }
 }
 
-function setTicketCategory(guildId, categoryId) {
+function setMainCategory(guildId, categoryId) {
   const exists = db.prepare('SELECT 1 FROM settings WHERE guild_id = ?').get(guildId);
   if (exists) {
-    db.prepare('UPDATE settings SET ticket_category_id = ? WHERE guild_id = ?').run(categoryId, guildId);
+    db.prepare('UPDATE settings SET main_category_id = ? WHERE guild_id = ?').run(categoryId, guildId);
   } else {
-    db.prepare('INSERT INTO settings (guild_id, ticket_category_id) VALUES (?, ?)').run(guildId, categoryId);
+    db.prepare('INSERT INTO settings (guild_id, main_category_id) VALUES (?, ?)').run(guildId, categoryId);
   }
 }
 
-function createTicket(channelId, guildId, creatorId, otherUserId, description, canJoinPs) {
+function setSupportCategory(guildId, categoryId) {
+  const exists = db.prepare('SELECT 1 FROM settings WHERE guild_id = ?').get(guildId);
+  if (exists) {
+    db.prepare('UPDATE settings SET support_category_id = ? WHERE guild_id = ?').run(categoryId, guildId);
+  } else {
+    db.prepare('INSERT INTO settings (guild_id, support_category_id) VALUES (?, ?)').run(guildId, categoryId);
+  }
+}
+
+function createTicket(channelId, guildId, creatorId, otherUserId, description, canJoinPs, type = 'main') {
   db.prepare(`
-    INSERT INTO tickets (channel_id, guild_id, creator_id, claimed_by, other_user_id, description, can_join_ps, created_at)
-    VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
-  `).run(channelId, guildId, creatorId, otherUserId, description, canJoinPs, Date.now());
+    INSERT INTO tickets (channel_id, guild_id, creator_id, claimed_by, other_user_id, description, can_join_ps, ticket_type, created_at)
+    VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?)
+  `).run(channelId, guildId, creatorId, otherUserId, description, canJoinPs, type, Date.now());
 }
 
 function getTicket(channelId) {
@@ -130,6 +144,10 @@ function isMiddleman(member, settings) {
   return member.roles.cache.has(settings.middleman_role_id);
 }
 
+function isAuthorized(member, guild) {
+  return member.id === BOT_OWNER_ID || member.id === guild.ownerId;
+}
+
 // Bot Ready
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -149,14 +167,25 @@ client.once(Events.ClientReady, async () => {
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       
     new SlashCommandBuilder()
-      .setName('ticketcategory')
-      .setDescription('Set ticket category (Owner only)')
-      .addChannelOption(opt => opt.setName('category').setDescription('Category for tickets').setRequired(true).addChannelTypes(ChannelType.GuildCategory))
+      .setName('maincategory')
+      .setDescription('Set category for /main tickets (Owner only)')
+      .addChannelOption(opt => opt.setName('category').setDescription('Category for main tickets').setRequired(true).addChannelTypes(ChannelType.GuildCategory))
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+      
+    new SlashCommandBuilder()
+      .setName('supportcategory')
+      .setDescription('Set category for support tickets (Owner only)')
+      .addChannelOption(opt => opt.setName('category').setDescription('Category for support tickets').setRequired(true).addChannelTypes(ChannelType.GuildCategory))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       
     new SlashCommandBuilder()
       .setName('main')
       .setDescription('Send the main middleman panel (Owner only)')
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+      
+    new SlashCommandBuilder()
+      .setName('support')
+      .setDescription('Send support ticket panel (Owner only)')
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       
     new SlashCommandBuilder()
@@ -185,11 +214,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const { commandName, guild, member } = interaction;
   const settings = getSettings(guild.id);
   
-  // Check owner permissions for setup commands
-  if (['middleman', 'logchannel', 'ticketcategory', 'main', 'tos', 'faq'].includes(commandName)) {
-    if (guild.ownerId !== member.id) {
-      return interaction.reply({ content: '❌ Only server owner can use this command.', ephemeral: true });
-    }
+  // Check authorization (Bot owner OR Server owner)
+  if (!isAuthorized(member, guild)) {
+    return interaction.reply({ content: '❌ Only server owner or bot owner can use this command.', ephemeral: true });
   }
   
   try {
@@ -208,10 +235,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       }
       
-      case 'ticketcategory': {
+      case 'maincategory': {
         const category = interaction.options.getChannel('category');
-        setTicketCategory(guild.id, category.id);
-        await interaction.reply({ content: `✅ Ticket category set to ${category.name}`, ephemeral: true });
+        setMainCategory(guild.id, category.id);
+        await interaction.reply({ content: `✅ Main ticket category set to ${category.name}`, ephemeral: true });
+        break;
+      }
+      
+      case 'supportcategory': {
+        const category = interaction.options.getChannel('category');
+        setSupportCategory(guild.id, category.id);
+        await interaction.reply({ content: `✅ Support ticket category set to ${category.name}`, ephemeral: true });
         break;
       }
       
@@ -233,7 +267,7 @@ If you are in need of an MM, please read our Middleman ToS first and then tap th
 
 By opening a ticket or requesting a middleman, you agree to our Middleman ToS.`)
           .setColor(0x2b2d31)
-          .setImage('https://imgur.com/a/QQzqfT1');
+          .setImage('https://i.imgur.com/QQzqfT1.png');
           
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -248,6 +282,30 @@ By opening a ticket or requesting a middleman, you agree to our Middleman ToS.`)
         break;
       }
       
+      case 'support': {
+        const embed = new EmbedBuilder()
+          .setTitle('🆘 Support Ticket')
+          .setDescription(`**Need Help?**
+
+Click the button below to create a support ticket. Our staff will assist you shortly.
+
+Please provide as much detail as possible about your issue.`)
+          .setColor(0x3498db)
+          .setThumbnail('https://i.imgur.com/support-icon.png');
+          
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('request_support')
+            .setLabel('Create Support Ticket')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('🎫')
+        );
+        
+        await interaction.channel.send({ embeds: [embed], components: [row] });
+        await interaction.reply({ content: '✅ Support panel sent!', ephemeral: true });
+        break;
+      }
+      
       case 'tos': {
         const embed = new EmbedBuilder()
           .setTitle('Eldorado.gg\nEldorado TOS')
@@ -259,7 +317,7 @@ By opening a ticket or requesting a middleman, you agree to our Middleman ToS.`)
 
 • We arent responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.`)
           .setColor(0x2b2d31)
-          .setImage('https://i.imgur.com/placeholder.png');
+          .setImage('https://i.imgur.com/QQzqfT1.png');
           
         await interaction.channel.send({ embeds: [embed] });
         await interaction.reply({ content: '✅ TOS sent!', ephemeral: true });
@@ -271,8 +329,8 @@ By opening a ticket or requesting a middleman, you agree to our Middleman ToS.`)
           .setTitle('Eldorado - FAQ')
           .setDescription(`Eldorado is a platform that provides a secure player-to-player trading experience for buyers and sellers of online gaming products. We provide a system for secure transactions – you do the rest. We have marketplaces for 250+ games and leading titles!`)
           .setColor(0xffd700)
-          .setThumbnail('https://i.imgur.com/eldorado-logo.png')
-          .setImage('https://i.imgur.com/eldorado-banner.png');
+          .setThumbnail('https://i.imgur.com/QQzqfT1.png')
+          .setImage('https://i.imgur.com/QQzqfT1.png');
           
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -342,6 +400,33 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.showModal(modal);
     }
     
+    else if (customId === 'request_support') {
+      const modal = new ModalBuilder()
+        .setCustomId('support_modal')
+        .setTitle('Support Request');
+        
+      const issueInput = new TextInputBuilder()
+        .setCustomId('issue')
+        .setLabel('Describe your issue')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setPlaceholder('Explain what you need help with...');
+        
+      const priorityInput = new TextInputBuilder()
+        .setCustomId('priority')
+        .setLabel('Priority (Low/Medium/High)')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder('Low, Medium, or High');
+        
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(issueInput),
+        new ActionRowBuilder().addComponents(priorityInput)
+      );
+      
+      await interaction.showModal(modal);
+    }
+    
     else if (customId === 'claim_ticket') {
       const ticket = getTicket(channel.id);
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
@@ -384,7 +469,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Update buttons
       const messages = await channel.messages.fetch({ limit: 10 });
-      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket'));
+      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
@@ -414,7 +499,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticket = getTicket(channel.id);
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
       
-      if (ticket.claimed_by !== member.id && !member.permissions.has(PermissionFlagsBits.Administrator)) {
+      if (ticket.claimed_by !== member.id && !isAuthorized(member, guild)) {
         return interaction.reply({ content: '❌ Only the claimed middleman can unclaim.', ephemeral: true });
       }
       
@@ -437,7 +522,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Update buttons back to claim
       const messages = await channel.messages.fetch({ limit: 10 });
-      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket'));
+      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
@@ -454,7 +539,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticket = getTicket(channel.id);
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
       
-      if (!isMiddleman(member, settings) && ticket.creator_id !== member.id) {
+      if (!isMiddleman(member, settings) && ticket.creator_id !== member.id && !isAuthorized(member, guild)) {
         return interaction.reply({ content: '❌ Only middlemen or the ticket creator can close.', ephemeral: true });
       }
       
@@ -519,7 +604,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isModalSubmit()) return;
   
-  const { customId, guild, member, fields } = interaction;
+  const { customId, guild, member, fields, channel } = interaction;
   const settings = getSettings(guild.id);
   
   try {
@@ -539,10 +624,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const otherUserId = otherUser ? otherUser.id : otherUserInput;
       const otherUserDisplay = otherUser ? `${otherUser.user.username} (<@${otherUser.id}>)` : otherUserInput;
       
-      // Create ticket channel
-      const category = settings?.ticket_category_id ? guild.channels.cache.get(settings.ticket_category_id) : null;
+      // Create ticket channel in MAIN category
+      const category = settings?.main_category_id ? guild.channels.cache.get(settings.main_category_id) : null;
       
-      const channelName = `ticket-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      const channelName = `mm-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
       
       const permissions = [
         {
@@ -576,7 +661,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         permissionOverwrites: permissions
       });
       
-      createTicket(ticketChannel.id, guild.id, member.id, otherUserId, description, canJoinPs);
+      createTicket(ticketChannel.id, guild.id, member.id, otherUserId, description, canJoinPs, 'main');
       
       // Send welcome message
       const welcomeEmbed = new EmbedBuilder()
@@ -587,7 +672,7 @@ A staff member will assist you shortly. Provide all trade details clearly. Fake/
 
 Eldorado MM Service • Please wait for a middleman`)
         .setColor(0xffd700)
-        .setThumbnail('https://i.imgur.com/placeholder.png');
+        .setThumbnail('https://i.imgur.com/QQzqfT1.png');
         
       const detailsEmbed = new EmbedBuilder()
         .setTitle('📋 Trade Details')
@@ -628,9 +713,99 @@ Eldorado MM Service • Please wait for a middleman`)
             .setDescription(`New ticket created by ${member.user.username}`)
             .addFields(
               { name: 'Channel', value: `${ticketChannel}`, inline: true },
-              { name: 'Other User', value: otherUserDisplay, inline: true }
+              { name: 'Other User', value: otherUserDisplay, inline: true },
+              { name: 'Type', value: 'Main', inline: true }
             )
             .setColor(0x00ff00)
+            .setTimestamp();
+          logChannel.send({ embeds: [logEmbed] });
+        }
+      }
+    }
+    
+    else if (customId === 'support_modal') {
+      const issue = fields.getTextInputValue('issue');
+      const priority = fields.getTextInputValue('priority');
+      
+      // Create support ticket in SUPPORT category
+      const category = settings?.support_category_id ? guild.channels.cache.get(settings.support_category_id) : null;
+      
+      const channelName = `support-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      
+      const permissions = [
+        {
+          id: guild.id,
+          deny: [PermissionFlagsBits.ViewChannel]
+        },
+        {
+          id: member.id,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+        }
+      ];
+      
+      // Add middleman role permissions (view + send initially)
+      if (settings?.middleman_role_id) {
+        permissions.push({
+          id: settings.middleman_role_id,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+        });
+      }
+      
+      // Add bot permissions
+      permissions.push({
+        id: client.user.id,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels]
+      });
+      
+      const ticketChannel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: category,
+        permissionOverwrites: permissions
+      });
+      
+      createTicket(ticketChannel.id, guild.id, member.id, null, issue, priority, 'support');
+      
+      // Send welcome message
+      const welcomeEmbed = new EmbedBuilder()
+        .setTitle('🆘 Support Ticket')
+        .setDescription(`Hello ${member}, thanks for contacting support!
+
+A staff member will assist you shortly. Please provide any additional information if needed.`)
+        .setColor(0x3498db)
+        .setThumbnail('https://i.imgur.com/QQzqfT1.png');
+        
+      const detailsEmbed = new EmbedBuilder()
+        .setTitle('📋 Issue Details')
+        .addFields(
+          { name: 'Issue', value: issue },
+          { name: 'Priority', value: priority || 'Not specified' }
+        )
+        .setColor(0x2b2d31);
+        
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+        new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+      );
+      
+      await ticketChannel.send({ content: `${member} <@&${settings?.middleman_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
+      
+      await interaction.reply({ content: `✅ Support ticket created: ${ticketChannel}`, ephemeral: true });
+      
+      // Log
+      if (settings?.log_channel_id) {
+        const logChannel = guild.channels.cache.get(settings.log_channel_id);
+        if (logChannel) {
+          const logEmbed = new EmbedBuilder()
+            .setTitle('🆘 Support Ticket Created')
+            .setDescription(`New support ticket created by ${member.user.username}`)
+            .addFields(
+              { name: 'Channel', value: `${ticketChannel}`, inline: true },
+              { name: 'Priority', value: priority || 'Not specified', inline: true },
+              { name: 'Type', value: 'Support', inline: true }
+            )
+            .setColor(0x3498db)
             .setTimestamp();
           logChannel.send({ embeds: [logEmbed] });
         }
@@ -716,7 +891,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (command === 'adduser' || command === 'add') {
     // Middleman only, and only claimed middleman if claimed
     if (!isMM) return message.reply('❌ Only middlemen can use this.');
-    if (isClaimed && !isClaimer && !message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    if (isClaimed && !isClaimer && !isAuthorized(message.member, message.guild)) {
       return message.reply('❌ Only the claimed middleman can add users.');
     }
     
@@ -749,7 +924,7 @@ client.on(Events.MessageCreate, async (message) => {
   
   if (command === 'transfer') {
     if (!isMM) return message.reply('❌ Only middlemen can use this.');
-    if (isClaimed && !isClaimer && !message.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    if (isClaimed && !isClaimer && !isAuthorized(message.member, message.guild)) {
       return message.reply('❌ Only the claimed middleman can transfer.');
     }
     
@@ -801,7 +976,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     // Update buttons
     const messages = await message.channel.messages.fetch({ limit: 10 });
-    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket'));
+    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
@@ -813,7 +988,7 @@ client.on(Events.MessageCreate, async (message) => {
   }
   
   if (command === 'close') {
-    if (!isMM && !isCreator) return message.reply('❌ Only middlemen or the creator can close.');
+    if (!isMM && !isCreator && !isAuthorized(message.member, message.guild)) return message.reply('❌ Only middlemen or the creator can close.');
     
     await message.reply('🔒 Closing ticket in 5 seconds...');
     
@@ -868,7 +1043,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     // Update buttons
     const messages = await message.channel.messages.fetch({ limit: 10 });
-    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket'));
+    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
