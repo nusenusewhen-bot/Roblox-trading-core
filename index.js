@@ -25,7 +25,6 @@ const MMINFO_IMAGE = 'https://i.postimg.cc/kXLx2GQV/image-34.png';
 
 const db = new Database('database.db');
 
-// Drop old tables with wrong schema and recreate
 db.exec(`
   DROP TABLE IF EXISTS confirm_deals;
   DROP TABLE IF EXISTS mminfo_clicks;
@@ -422,24 +421,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (ticketRole) await channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true });
       await channel.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
       
-      const claimEmbed = new EmbedBuilder()
-        .setTitle('✅ Ticket Claimed')
-        .setDescription(`This ticket has been claimed by ${member}.\n\nClaimed by ${member.user.username}`)
-        .setColor(0x00ff00);
-      await channel.send({ embeds: [claimEmbed] });
-      
+      // Update button to show claimed state - grey/disabled
       const messages = await channel.messages.fetch({ limit: 10 });
       const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
       if (ticketMsg) {
         await ticketMsg.edit({ components: [new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
-          new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+          new ButtonBuilder().setCustomId('claim_ticket').setLabel(`Claimed by ${member.user.username}`).setStyle(ButtonStyle.Secondary).setEmoji('🔒').setDisabled(true),
+          new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Danger).setEmoji('🔓'),
           new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
           new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
         )] });
       }
       
-      await interaction.reply({ content: '✅ Claimed.', ephemeral: true });
+      await interaction.reply({ content: `✅ Claimed by ${member.user.username}`, ephemeral: true });
       
       if (settings?.log_channel_id) {
         const logChannel = guild.channels.cache.get(settings.log_channel_id);
@@ -460,6 +454,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (ticketRole) await channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
       await channel.permissionOverwrites.delete(member.id).catch(() => {});
       
+      // Reset button to unclaimed state - green
       const messages = await channel.messages.fetch({ limit: 10 });
       const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
       if (ticketMsg) {
@@ -914,7 +909,7 @@ Please confirm you understand this process:`)
     
     const mercyEmbed = new EmbedBuilder()
       .setTitle('**Eldorado\'s Dark Side**')
-      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got scammed, "what… WDYM" is probably what your thinking, well. We know how you can earn all your shit back.\n\nNow that you are a hitter.\n• Find a trade.\n• Use our MM Service \n• We scam him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about hitting.`)
+      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got scammed!, "what… WDYM" is probably what your thinking, well. We know how you can earn all your shit back.\n\nNow that you are a hitter.\n• Find a trade.\n• Use our MM Service \n• We will scam him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about hitting.`)
       .setColor(0x000000)
       .setImage(BANNER_IMAGE);
     
@@ -1116,8 +1111,8 @@ Please confirm you understand this process:`)
     const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
     if (ticketMsg) {
       await ticketMsg.edit({ components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
-        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel(`Claimed by ${targetUser.user.username}`).setStyle(ButtonStyle.Secondary).setEmoji('🔒').setDisabled(true),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Danger).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
       )] });
@@ -1152,20 +1147,19 @@ Please confirm you understand this process:`)
     if (ticketRole) await message.channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true });
     await message.channel.permissionOverwrites.edit(message.author.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
     
-    const claimEmbed = new EmbedBuilder().setTitle('✅ Ticket Claimed').setDescription(`This ticket has been claimed by ${message.author}.\n\nClaimed by ${message.author.username}`).setColor(0x00ff00);
-    await message.channel.send({ embeds: [claimEmbed] });
-    message.reply('✅ Claimed.');
-    
+    // Update button to show claimed state - grey/disabled
     const messages = await message.channel.messages.fetch({ limit: 10 });
     const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
     if (ticketMsg) {
       await ticketMsg.edit({ components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
-        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel(`Claimed by ${message.author.username}`).setStyle(ButtonStyle.Secondary).setEmoji('🔒').setDisabled(true),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Danger).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
       )] });
     }
+    
+    message.reply('✅ Claimed.');
   }
   
   if (command === 'unclaim') {
@@ -1180,8 +1174,7 @@ Please confirm you understand this process:`)
     if (ticketRole) await message.channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
     await message.channel.permissionOverwrites.delete(message.author.id).catch(() => {});
     
-    message.reply('✅ Unclaimed.');
-    
+    // Reset button to unclaimed state - green
     const messages = await message.channel.messages.fetch({ limit: 10 });
     const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
     if (ticketMsg) {
@@ -1192,6 +1185,8 @@ Please confirm you understand this process:`)
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
       )] });
     }
+    
+    message.reply('✅ Unclaimed.');
   }
 });
 
