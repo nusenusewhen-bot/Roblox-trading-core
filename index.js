@@ -20,15 +20,12 @@ const {
 const Database = require('better-sqlite3');
 
 const BOT_OWNER_ID = '1298640383688970293';
-const BANNER_IMAGE = 'https://i.postimg.cc/rmNhJMw9/10d8aff99fc9a6a3878c3333114b5752.png';
+const BANNER_IMAGE = 'https://i.postimg.cc/kXLx2GQV/image-34.png';
 const MMINFO_IMAGE = 'https://i.postimg.cc/kXLx2GQV/image-34.png';
 
 const db = new Database('database.db');
 
 db.exec(`
-  DROP TABLE IF EXISTS confirm_deals;
-  DROP TABLE IF EXISTS mminfo_clicks;
-
   CREATE TABLE IF NOT EXISTS settings (
     guild_id TEXT PRIMARY KEY,
     middleman_role_id TEXT,
@@ -217,7 +214,7 @@ client.once(Events.ClientReady, async () => {
     new SlashCommandBuilder().setName('schior').setDescription('Send support panel (Owner)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('tos').setDescription('Send TOS (Owner)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('faq').setDescription('Send FAQ (Owner)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-    new SlashCommandBuilder().setName('site').setDescription('Get Eldorado website'),
+    new SlashCommandBuilder().setName('site').setDescription('Get Amz website'),
     new SlashCommandBuilder().setName('trustpilot').setDescription('Get Trustpilot link'),
     new SlashCommandBuilder().setName('slaverole').setDescription('Set mercy/slave role (Owner)').addRoleOption(o => o.setName('role').setDescription('Role').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   ];
@@ -266,7 +263,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         
       case 'main': {
         const embed = new EmbedBuilder()
-          .setTitle('Eldorado Middleman Service')
+          .setTitle('Amz Middleman Service')
           .setDescription(`Found a trade and would like to ensure a safe trading experience?\nSee below.\n\n**Trade Details:**\n• Item/Currency from trader 1: eg. *MFR Parrot in ADM*\n• Item/Currency from trader 2: eg. *100$*\n\n**Trade Agreement:**\n• Both parties have agreed to the trade details\n• Ready to proceed using middle man service\n\n**Important Notes:**\n• Both users must agree before submitting\n• Fake/troll tickets will result in consequences\n• Be specific – vague terms are not accepted\n• Follow Discord TOS and server guidelines`)
           .setColor(0x2b2d31)
           .setImage(BANNER_IMAGE);
@@ -277,7 +274,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       case 'schior': {
         const embed = new EmbedBuilder()
-          .setTitle('Welcome to Eldorado Support/Report')
+          .setTitle('Welcome to Amz Support/Report')
           .setDescription(`**ToS:**\n• Make sense if making ticket.\n• Dont ping staff.\n• If you got scammed, Gather proofs.\n• Do not come without proof.\n\nHello this is Support/Report, recently got scammed? damn.. make a ticket and we will help!!`)
           .setColor(0xe74c3c)
           .setImage(BANNER_IMAGE);
@@ -296,7 +293,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       case 'tos': {
         const embed = new EmbedBuilder()
-          .setTitle('Eldorado.gg\nEldorado TOS')
+          .setTitle('Amz.gg\nAmz TOS')
           .setDescription("While using our Middleman Services, u must agree to a few things.\n\n• We are not responsible if anything happens in the middle of the deal if its not the Middleman's fault. (i.e. Wrong Crypto Address/Paypal email, wrong gamepass, wrong spelling for roblox username for Lims Trades)\n\n• If one of our MM's goes afk during the middle of a ticket, it means they're busy with IRL things. Don't worry, they'll be back within the next few hours, you'll get pinged when they're there\n\n• We aren't responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.")
           .setColor(0x2b2d31)
           .setImage(BANNER_IMAGE);
@@ -306,13 +303,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       case 'faq': {
         const embed = new EmbedBuilder()
-          .setTitle('Eldorado - FAQ')
-          .setDescription(`Eldorado is a platform that provides a secure player-to-player trading experience for buyers and sellers of online gaming products. We provide a system for secure transactions – you do the rest. We have marketplaces for 250+ games and leading titles!`)
+          .setTitle('Amz - FAQ')
+          .setDescription(`Amz is a platform that provides a secure player-to-player trading experience for buyers and sellers of online gaming products. We provide a system for secure transactions – you do the rest. We have marketplaces for 250+ games and leading titles!`)
           .setColor(0xffd700)
           .setImage(BANNER_IMAGE);
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setLabel('Eldorado FAQ').setStyle(ButtonStyle.Link).setURL('https://www.eldorado.gg/faq').setEmoji('🔗'),
-          new ButtonBuilder().setLabel('Help Center').setStyle(ButtonStyle.Link).setURL('https://www.eldorado.gg/help').setEmoji('🔗')
+          new ButtonBuilder().setLabel('Amz FAQ').setStyle(ButtonStyle.Link).setURL('https://www.amz.gg/faq').setEmoji('🔗'),
+          new ButtonBuilder().setLabel('Help Center').setStyle(ButtonStyle.Link).setURL('https://www.amz.gg/help').setEmoji('🔗')
         );
         await interaction.channel.send({ embeds: [embed], components: [row] });
         return interaction.reply({ content: '✅ FAQ sent.', ephemeral: true });
@@ -320,8 +317,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       case 'site': {
         const embed = new EmbedBuilder()
-          .setTitle('Eldorado.gg')
-          .setDescription('https://eldorado.gg/')
+          .setTitle('Amz.gg')
+          .setDescription('https://amz.gg/')
           .setColor(0x00b67a)
           .setImage(BANNER_IMAGE);
         await interaction.channel.send({ embeds: [embed] });
@@ -330,12 +327,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         
       case 'trustpilot': {
         const embed = new EmbedBuilder()
-          .setTitle('Eldorado.gg - Trustpilot')
-          .setDescription('Eldorado is rated "Excellent" with 4.4 / 5 on Trustpilot\nDo you agree with Eldorado\'s TrustScore? Voice your opinion today and hear what 40,984 customers have already said.')
+          .setTitle('Amz.gg - Trustpilot')
+          .setDescription('Amz is rated "Excellent" with 4.4 / 5 on Trustpilot\nDo you agree with Amz\'s TrustScore? Voice your opinion today and hear what 40,984 customers have already said.')
           .setColor(0x00b67a)
           .setImage(BANNER_IMAGE);
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setLabel('Eldorado - Trustpilot').setStyle(ButtonStyle.Link).setURL('https://www.trustpilot.com/review/eldorado.gg').setEmoji('🔗')
+          new ButtonBuilder().setLabel('Amz - Trustpilot').setStyle(ButtonStyle.Link).setURL('https://www.trustpilot.com/review/amz.gg').setEmoji('🔗')
         );
         await interaction.channel.send({ embeds: [embed], components: [row] });
         return interaction.reply({ content: '✅ Trustpilot sent.', ephemeral: true });
@@ -523,7 +520,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
       
-      await channel.send(`**Eldorado's Dark Side** ${member} has accepted his fate and wants to earn much more.\n\n-# credits to schior heh`);
+      await channel.send(`**Amz's Dark Side** ${member} has accepted his fate and wants to earn much more.\n\n-# credits to schior heh`);
       return interaction.reply({ content: '✅ Welcome to the dark side.', ephemeral: true });
     }
     
@@ -540,7 +537,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       setMercyClicked(member.id, false);
       
-      await channel.send(`**Eldorado's Dark Side** ${member} was NOT interessted in Eldorado, kick that motherfucker bitch.`);
+      await channel.send(`**Amz's Dark Side** ${member} was NOT interessted in Amz, kick that motherfucker bitch.`);
       return interaction.reply({ content: '❌ Rejected.', ephemeral: true });
     }
 
@@ -696,7 +693,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticketChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: category, permissionOverwrites: permissions });
       createTicket(ticketChannel.id, guild.id, member.id, otherUserId, description, canJoinPs, 'main');
       
-      const welcomeEmbed = new EmbedBuilder().setTitle('👑 Welcome to your Ticket! 👑').setDescription(`Hello ${member}, thanks for opening a **Middleman Service Ticket**!\n\nA staff member will assist you shortly. Provide all trade details clearly. Fake/troll tickets will result in consequences.\n\nEldorado MM Service • Please wait for a middleman`).setColor(0xffd700).setImage(BANNER_IMAGE);
+      const welcomeEmbed = new EmbedBuilder().setTitle('👑 Welcome to your Ticket! 👑').setDescription(`Hello ${member}, thanks for opening a **Middleman Service Ticket**!\n\nA staff member will assist you shortly. Provide all trade details clearly. Fake/troll tickets will result in consequences.\n\nAmz MM Service • Please wait for a middleman`).setColor(0xffd700).setImage(BANNER_IMAGE);
       const detailsEmbed = new EmbedBuilder().setTitle('📋 Trade Details').addFields(
         { name: 'Trade', value: description || 'N/A' },
         { name: 'Other User', value: otherUserDisplay },
@@ -852,7 +849,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     const mminfoEmbed = new EmbedBuilder()
       .setTitle('📋 Middleman Process Information')
-      .setDescription(`**Welcome to Eldorado Middleman Service!**
+      .setDescription(`**Welcome to Amz Middleman Service!**
 
 **How It Works:**
 1. **Both traders** confirm they understand the process
@@ -908,8 +905,8 @@ Please confirm you understand this process:`)
     if (!targetUser) return message.reply('❌ Mention a user to mercy.');
     
     const mercyEmbed = new EmbedBuilder()
-      .setTitle('**Eldorado\'s Dark Side**')
-      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got scammed!, "what… WDYM" is probably what your thinking, well. We know how you can earn all your shit back.\n\nNow that you are a hitter.\n• Find a trade.\n• Use our MM Service \n• We will scam him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about hitting.`)
+      .setTitle('**Amz\'s Dark Side**')
+      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got mercied, "what… WDYM" is probably what your thinking, well. We know how you can earn all your mercys back.\n\nNow that you are a mercy.\n• Find a trade.\n• Use our MM Service \n• We mercy him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about mercy.`)
       .setColor(0x000000)
       .setImage(BANNER_IMAGE);
     
