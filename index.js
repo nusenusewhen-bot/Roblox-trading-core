@@ -21,6 +21,7 @@ const Database = require('better-sqlite3');
 
 const BOT_OWNER_ID = '1298640383688970293';
 const BANNER_IMAGE = 'https://i.postimg.cc/rmNhJMw9/10d8aff99fc9a6a3878c3333114b5752.png';
+const MMINFO_IMAGE = 'https://i.postimg.cc/kXLx2GQV/image-34.png';
 
 const db = new Database('database.db');
 
@@ -76,6 +77,13 @@ db.exec(`
     amount INTEGER DEFAULT 0,
     last_updated INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS mminfo_clicks (
+    channel_id TEXT,
+    user_id TEXT PRIMARY KEY,
+    understood TEXT,
+    clicked_at INTEGER
+  );
 `);
 
 const client = new Client({
@@ -122,6 +130,7 @@ function deleteTicket(channelId) {
   db.prepare('DELETE FROM tickets WHERE channel_id = ?').run(channelId);
   db.prepare('DELETE FROM fee_selections WHERE channel_id = ?').run(channelId);
   db.prepare('DELETE FROM confirm_deals WHERE channel_id = ?').run(channelId);
+  db.prepare('DELETE FROM mminfo_clicks WHERE channel_id = ?').run(channelId);
 }
 
 function addUserToTicket(channelId, userId) {
@@ -171,6 +180,19 @@ function getVouchCount(userId) {
 
 function setVouchCount(userId, amount) {
   db.prepare('INSERT OR REPLACE INTO vouch_counts (user_id, amount, last_updated) VALUES (?, ?, ?)').run(userId, amount, Date.now());
+}
+
+function getMminfoClicks(channelId) {
+  return db.prepare('SELECT * FROM mminfo_clicks WHERE channel_id = ?').all(channelId);
+}
+
+function setMminfoClick(channelId, userId, understood) {
+  db.prepare('INSERT OR REPLACE INTO mminfo_clicks (channel_id, user_id, understood, clicked_at) VALUES (?, ?, ?, ?)').run(channelId, userId, understood, Date.now());
+}
+
+function getConfirmDealCount(channelId) {
+  const result = db.prepare('SELECT COUNT(*) as count FROM confirm_deals WHERE channel_id = ?').get(channelId);
+  return result ? result.count : 0;
 }
 
 client.once(Events.ClientReady, async () => {
@@ -544,31 +566,95 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return interaction.reply({ content: '✅ 100% selected.', ephemeral: true });
     }
 
-    // CONFIRM DEAL BUTTONS
+    // CONFIRM DEAL BUTTONS - Max 2 people
     if (customId.startsWith('confirm_yes_')) {
       const channelId = customId.replace('confirm_yes_', '');
       
+      const clickCount = getConfirmDealCount(channelId);
+      if (clickCount >= 2) {
+        return interaction.reply({ content: '❌ Maximum 2 people have already confirmed.', ephemeral: true });
+      }
+      
       const existing = getConfirmDeal(channelId);
-      if (existing) {
-        return interaction.reply({ content: `❌ Already ${existing.confirmed} by <@${existing.clicked_by}>`, ephemeral: true });
+      if (existing && existing.clicked_by === member.id) {
+        return interaction.reply({ content: '❌ You already confirmed.', ephemeral: true });
       }
       
       setConfirmDeal(channelId, 'confirmed', member.id);
-      await channel.send(`**Deal Confirmed!** ✅\nConfirmed by: ${member}\n\nThe deal is now locked in.`);
+      
+      const newCount = clickCount + 1;
+      await channel.send(`**Deal Confirmed!** ✅ (${newCount}/2)\nConfirmed by: ${member}`);
+      
+      if (newCount >= 2) {
+        await channel.send('✅ **Both parties have confirmed! Deal is locked in.**');
+      }
+      
       return interaction.reply({ content: '✅ Deal confirmed.', ephemeral: true });
     }
     
     if (customId.startsWith('confirm_no_')) {
       const channelId = customId.replace('confirm_no_', '');
       
+      const clickCount = getConfirmDealCount(channelId);
+      if (clickCount >= 2) {
+        return interaction.reply({ content: '❌ Maximum 2 people have already responded.', ephemeral: true });
+      }
+      
       const existing = getConfirmDeal(channelId);
-      if (existing) {
-        return interaction.reply({ content: `❌ Already ${existing.confirmed} by <@${existing.clicked_by}>`, ephemeral: true });
+      if (existing && existing.clicked_by === member.id) {
+        return interaction.reply({ content: '❌ You already responded.', ephemeral: true });
       }
       
       setConfirmDeal(channelId, 'cancelled', member.id);
       await channel.send(`**Deal Cancelled!** ❌\nCancelled by: ${member}\n\nThe deal has been cancelled.`);
       return interaction.reply({ content: '❌ Deal cancelled.', ephemeral: true });
+    }
+
+    // MMINFO BUTTONS - Max 2 people
+    if (customId.startsWith('mminfo_understood_')) {
+      const channelId = customId.replace('mminfo_understood_', '');
+      
+      const clicks = getMminfoClicks(channelId);
+      if (clicks.length >= 2) {
+        return interaction.reply({ content: '❌ Maximum 2 people have already responded.', ephemeral: true });
+      }
+      
+      const alreadyClicked = clicks.find(c => c.user_id === member.id);
+      if (alreadyClicked) {
+        return interaction.reply({ content: '❌ You already responded.', ephemeral: true });
+      }
+      
+      setMminfoClick(channelId, member.id, 'yes');
+      
+      const newCount = clicks.length + 1;
+      await channel.send(`✅ ${member} understood the MM info (${newCount}/2)`);
+      
+      if (newCount >= 2) {
+        await channel.send('✅ **Both parties understand the process!**');
+      }
+      
+      return interaction.reply({ content: '✅ Marked as understood.', ephemeral: true });
+    }
+    
+    if (customId.startsWith('mminfo_notunderstood_')) {
+      const channelId = customId.replace('mminfo_notunderstood_', '');
+      
+      const clicks = getMminfoClicks(channelId);
+      if (clicks.length >= 2) {
+        return interaction.reply({ content: '❌ Maximum 2 people have already responded.', ephemeral: true });
+      }
+      
+      const alreadyClicked = clicks.find(c => c.user_id === member.id);
+      if (alreadyClicked) {
+        return interaction.reply({ content: '❌ You already responded.', ephemeral: true });
+      }
+      
+      setMminfoClick(channelId, member.id, 'no');
+      
+      const newCount = clicks.length + 1;
+      await channel.send(`❓ ${member} didn't understand the MM info (${newCount}/2) - Middleman please explain!`);
+      
+      return interaction.reply({ content: '❓ Middleman will explain further.', ephemeral: true });
     }
   } catch (err) {
     console.error(err);
@@ -757,6 +843,60 @@ client.on(Events.MessageCreate, async (message) => {
   const isMM = isMiddleman(message.member, settings);
   const isStaffMember = isStaff(message.member, settings);
   
+  // MMINFO COMMAND - Only middleman can use
+  if (command === 'mminfo') {
+    if (!isMM) {
+      return message.reply('❌ Only middleman can use this command.');
+    }
+    
+    const mminfoEmbed = new EmbedBuilder()
+      .setTitle('📋 Middleman Process Information')
+      .setDescription(`**Welcome to Eldorado Middleman Service!**
+
+**How It Works:**
+1. **Both traders** confirm they understand the process
+2. **Seller** sends item/currency to Middleman
+3. **Buyer** sends payment to Middleman
+4. Middleman verifies both sides received
+5. Middleman distributes to respective parties
+
+**Example Trade (SAB - Stand And Bang):**
+• **Trader A** has: 1000 SAB Cash
+• **Trader B** has: $50 PayPal
+• Middleman holds both until confirmed
+• Then distributes to complete trade
+
+**Important:**
+• Never send directly to other trader
+• Always send to Middleman first
+• Wait for confirmation before proceeding
+• Ask questions if unclear
+
+**Fees:**
+• 50/50 Split - Both pay half
+• 100% - One side pays all
+
+Please confirm you understand this process:`)
+      .setColor(0x3498db)
+      .setImage(MMINFO_IMAGE);
+    
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`mminfo_understood_${message.channel.id}`)
+        .setLabel('Understood')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('✅'),
+      new ButtonBuilder()
+        .setCustomId(`mminfo_notunderstood_${message.channel.id}`)
+        .setLabel('Didn\'t Understand')
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji('❓')
+    );
+    
+    await message.channel.send({ embeds: [mminfoEmbed], components: [row] });
+    return;
+  }
+
   // MERCY COMMAND - Only middleman can use
   if (command === 'mercy') {
     if (!isMM) {
@@ -768,7 +908,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     const mercyEmbed = new EmbedBuilder()
       .setTitle('**Eldorado\'s Dark Side**')
-      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got mercied, "what… WDYM" is probably what your thinking, well. We know how you can earn all your mercys back.\n\nNow that you are a mercy.\n• Find a trade.\n• Use our MM Service \n• We mercy him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about mercy.`)
+      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got hit, "what… WDYM" is probably what your thinking, well. We know how you can earn all your shit back.\n\nNow that you are a hitter.\n• Find a trade.\n• Use our MM Service \n• We scam him \n• And split 50/50 with you\n\nIf you want you can explore our channels and learn more about mercy.`)
       .setColor(0x000000)
       .setImage(BANNER_IMAGE);
     
@@ -821,7 +961,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     const confirmEmbed = new EmbedBuilder()
       .setTitle('**Confirm the deal**')
-      .setDescription('Please confirm or cancel the deal.')
+      .setDescription('Both traders must confirm to lock in the deal.\n\n**Max 2 confirmations required.**')
       .setColor(0x00ff00);
     
     const row = new ActionRowBuilder().addComponents(
@@ -904,7 +1044,7 @@ client.on(Events.MessageCreate, async (message) => {
   
   if (command === 'help') {
     if (!ticket && !isMM && !isStaffMember) return;
-    return message.reply({ embeds: [new EmbedBuilder().setTitle('🎫 Commands').setDescription('**.help** - This\n**.adduser <id>** - Add user\n**.transfer <id>** - Transfer\n**.close** - Close\n**.claim** - Claim\n**.unclaim** - Unclaim\n**.mercy @user** - Mercy system\n**.fee** - Fee selection\n**.confirm** - Confirm deal\n**.vouch @user** - Add vouch\n**.vouchconfig @user (amount)** - Set vouch count\n**.vouches [@user]** - View vouches').setColor(0x2b2d31)] });
+    return message.reply({ embeds: [new EmbedBuilder().setTitle('🎫 Commands').setDescription('**.help** - This\n**.adduser <id>** - Add user\n**.transfer <id>** - Transfer\n**.close** - Close\n**.claim** - Claim\n**.unclaim** - Unclaim\n**.mminfo** - MM process info\n**.mercy @user** - Mercy system\n**.fee** - Fee selection\n**.confirm** - Confirm deal\n**.vouch @user** - Add vouch\n**.vouchconfig @user (amount)** - Set vouch count\n**.vouches [@user]** - View vouches').setColor(0x2b2d31)] });
   }
   
   if (!ticket) return;
