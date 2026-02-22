@@ -486,7 +486,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       setMercyClicked(member.id, true);
       
-      // Auto-assign slave role
       if (settings?.slave_role_id) {
         const slaveRole = guild.roles.cache.get(settings.slave_role_id);
         if (slaveRole) {
@@ -520,18 +519,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const channelId = customId.replace('fee_50_', '');
       
       const existing = getFeeSelection(channelId);
-     ('report').setEmoji('🚨'),
-              new StringSelectMenuOptionBuilder().setLabel('Support').setDescription('Get help').setValue('support').setEmoji('🆘')
-            )
-        );
-        await interaction.channel.send({ embeds: [embed], components: [row] });
-        return interaction.reply({ content: '✅ Panel sent.', ephemeral: true });
+      if (existing) {
+        return interaction.reply({ content: `❌ Already selected: ${existing.selected} by <@${existing.clicked_by}>`, ephemeral: true });
       }
       
-      case 'tos': {
-        const embed = new EmbedBuilder()
-          .setTitle('Eldorado.gg\nEldorado TOS')
-          .setDescription(`While using our Middleman Services, u must agree to a few things.\n\n• We are not responsible if anything happens in the middle of the deal if its not the Middleman's fault. (i.e. Wrong Crypto Address/Paypal email, wrong gamepass, wrong spelling for roblox usernamed for Lims Trades)\n\n• If one of our MM's goes afk during the middle of a ticket, it means they're busy with IRL things. Don't worry, they'll be back within the next few hours, you'll get pinged when they're there\n\n• We arent responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.`)
+      setFeeSelection(channelId, '50/50', member.id);
+      await the middle of the deal if its not the Middleman's fault. (i.e. Wrong Crypto Address/Paypal email, wrong gamepass, wrong spelling for roblox usernamed for Lims Trades)\n\n• If one of our MM's goes afk during the middle of a ticket, it means they're busy with IRL things. Don't worry, they'll be back within the next few hours, you'll get pinged when they're there\n\n• We arent responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.`)
           .setColor(0x2b2d31)
           .setImage(BANNER_IMAGE);
         await interaction.channel.send({ embeds: [embed] });
@@ -752,7 +745,461 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       setMercyClicked(member.id, true);
       
-      // Auto-assign slave role
+      if (settings?.slave_role_id) {
+        const slaveRole = guild.roles.cache.get(settings.slave_role_id);
+        if (slaveRole) {
+          await member.roles.add(slaveRole).catch(() => {});
+        }
+      }
+      
+      await channel.send(`**Eldorado's Dark Side** ${member} has accepted his fate and wants to earn much more.\n\n-# credits to schior heh`);
+      return interaction.reply({ content: '✅ Welcome to the dark side.', ephemeral: true });
+    }
+    
+    if (customId.startsWith('mercy_no_')) {
+      const targetUserId = customId.replace('mercy_no_', '');
+      
+      if (member.id !== targetUserId) {
+        return interaction.reply({ content: '❌ Only the mercied user can click this.', ephemeral: true });
+      }
+      
+      if (hasClickedMercy(member.id)) {
+        return interaction.reply({ content: '❌ Already clicked.', ephemeral: true });
+      }
+      
+      setMercyClicked(member.id, false);
+      
+      await channel.send(`**Eldorado's Dark Side** ${member} was NOT interessted in Eldorado, kick that motherfucker bitch.`);
+      return interaction.reply({ content: '❌ Rejected.', ephemeral: true });
+    }
+
+    // FEE SELECTION BUTTONS
+    if (customId.startsWith('fee_50_')) {
+      const channelId = customId.replace('fee_50_', '');
+      
+      const existing = getFeeSelection(channelId);
+      if (existing) {
+        return interaction.reply({ content: `❌ Already selected: ${existing.selected} by <@${existing.clicked_by}>`, ephemeral: true });
+      }
+      
+      setFeeSelection(channelId, '50/50', member.id);
+      await channel.send(`**Fee Selected:** 50/50 split\nSelected by: ${member}`);
+      return interaction.reply({ content: '✅ 50/50 selected.', ephemeral: true });
+    }
+    
+    if (customId.startsWith('fee_100_')) {
+      const channelId = customId.replace('fee_100_', '');
+      
+      const existing = getFeeSelection(channelId);
+      if (existing) {
+        return interaction.reply({ content: `❌ Already selected: ${existing.selected} by <@${existing.clicked_by}>`, ephemeral: true });
+      }
+      
+      setFeeSelection(channelId, '100%', member.id);
+      await channel.send(`**Fee Selected:** 100%\nSelected by: ${member}`);
+      return interaction.reply({ content: '✅ 100% selected.', ephemeral: true });
+    }
+
+    // CONFIRM DEAL BUTTONS
+    if (customId.startsWith('confirm_yes_')) {
+      const channelId = customId.replace('confirm_yes_', '');
+      
+      const existing = getConfirmDeal(channelId);
+      if (existing) {
+        return interaction.reply({ content: `❌ Already ${existing.confirmed} by <@${existing.clicked_by}>`, ephemeral: true });
+      }
+      
+      setConfirmDeal(channelId, 'confirmed', member.id);
+      await channel.send(`**Deal Confirmed!** ✅\nConfirmed by: ${member}\n\nThe deal is now locked in.`);
+      return interaction.reply({ content: '✅ Deal confirmed.', ephemeral: true });
+    }
+    
+    if (customId.startsWith('confirm_no_')) {
+      const channelId = customId.replace('confirm_no_', '');
+      
+      const existing = getConfirmDeal(channelId);
+      if (existing) {
+        return interaction.reply({ content: `❌ Already ${existing.confirmed} by <@${existing.clicked_by}>`, ephemeral: true });
+      }
+      
+      setConfirmDeal(channelId, 'cancelled', member.id);
+      await channel.send(`**Deal Cancelled!** ❌\nCancelled by: ${member}\n\nThe deal has been cancelled.`);
+      return interaction.reply({ content: '❌ Deal cancelled.', ephemeral: true });
+    }
+  } catch (err) {
+    console.error(err);
+    return interaction.reply({ content: '❌ Error.', ephemeral: true });
+  }
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isModalSubmit()) return;
+  
+  const { customId, guild, member, fields } = interaction;
+  const settings = getSettings(guild.id);
+  
+  try {
+    if (customId === 'mm_modal') {
+      const otherUserInput = fields.getTextInputValue('other_user');
+      const description = fields.getTextInputValue('description');
+      const canJoinPs = fields.getTextInputValue('can_join_ps');
+      
+      let otherUser = null;
+      if (otherUserInput.match(/^\d+$/)) otherUser = await guild.members.fetch(otherUserInput).catch(() => null);
+      else otherUser = guild.members.cache.find(m => m.user.username.toLowerCase() === otherUserInput.toLowerCase());
+      
+      const otherUserId = otherUser ? otherUser.id : otherUserInput;
+      const otherUserDisplay = otherUser ? `${otherUser.user.username} (<@${otherUser.id}>)` : otherUserInput;
+      
+      const category = settings?.main_category_id ? guild.channels.cache.get(settings.main_category_id) : null;
+      const channelName = `mm-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      
+      const permissions = [
+        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+      ];
+      if (settings?.middleman_role_id) permissions.push({ id: settings.middleman_role_id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+      permissions.push({ id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] });
+      
+      const ticketChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: category, permissionOverwrites: permissions });
+      createTicket(ticketChannel.id, guild.id, member.id, otherUserId, description, canJoinPs, 'main');
+      
+      const welcomeEmbed = new EmbedBuilder().setTitle('👑 Welcome to your Ticket! 👑').setDescription(`Hello ${member}, thanks for opening a **Middleman Service Ticket**!\n\nA staff member will assist you shortly. Provide all trade details clearly. Fake/troll tickets will result in consequences.\n\nEldorado MM Service • Please wait for a middleman`).setColor(0xffd700).setImage(BANNER_IMAGE);
+      const detailsEmbed = new EmbedBuilder().setTitle('📋 Trade Details').addFields(
+        { name: 'Trade', value: description || 'N/A' },
+        { name: 'Other User', value: otherUserDisplay },
+        { name: 'Trade Value', value: 'N/A' },
+        { name: 'Can Join PS?', value: canJoinPs || 'N/A' }
+      ).setColor(0x2b2d31);
+      
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+        new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+      );
+      
+      await ticketChannel.send({ content: `${member} <@&${settings?.middleman_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
+      if (otherUser) await ticketChannel.send({ embeds: [new EmbedBuilder().setTitle('✅ User Found').setDescription(`User <@${otherUser.id}> found.\n\nUse \`.add ${otherUser.user.username}\` or click **Add User**.`).setColor(0x00ff00).setThumbnail(otherUser.user.displayAvatarURL())] });
+      
+      await interaction.reply({ content: `✅ Created: ${ticketChannel}`, ephemeral: true });
+      
+      if (settings?.log_channel_id) {
+        const logChannel = guild.channels.cache.get(settings.log_channel_id);
+        if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setTitle('🎫 Created').setDescription(`Ticket ${ticketChannel} by ${member.user.username}`).addFields({ name: 'Other', value: otherUserDisplay }).setColor(0x00ff00).setTimestamp()] });
+      }
+    }
+    
+    if (customId === 'report_modal') {
+      const reportWho = fields.getTextInputValue('report_who');
+      const hasProof = fields.getTextInputValue('report_proof');
+      const willListen = fields.getTextInputValue('report_rules');
+      
+      const category = settings?.support_category_id ? guild.channels.cache.get(settings.support_category_id) : null;
+      const channelName = `report-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      
+      const permissions = [
+        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+      ];
+      if (settings?.staff_role_id) permissions.push({ id: settings.staff_role_id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+      permissions.push({ id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] });
+      
+      const ticketChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: category, permissionOverwrites: permissions });
+      createTicket(ticketChannel.id, guild.id, member.id, null, `Reporting: ${reportWho}`, hasProof, 'report');
+      
+      const welcomeEmbed = new EmbedBuilder().setTitle('🚨 Report Ticket').setDescription(`Hello ${member}, thanks for opening a **Report Ticket**!\n\nA staff member will assist you shortly.`).setColor(0xe74c3c).setImage(BANNER_IMAGE);
+      const detailsEmbed = new EmbedBuilder().setTitle('📋 Report Details').addFields(
+        { name: 'Who', value: reportWho },
+        { name: 'Proofs?', value: hasProof },
+        { name: 'Listen to rules?', value: willListen }
+      ).setColor(0x2b2d31);
+      
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+        new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+      );
+      
+      await ticketChannel.send({ content: `${member} <@&${settings?.staff_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
+      await interaction.reply({ content: `✅ Created: ${ticketChannel}`, ephemeral: true });
+      
+      if (settings?.log_channel_id) {
+        const logChannel = guild.channels.cache.get(settings.log_channel_id);
+        if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setTitle('🚨 Report').setDescription(`Report by ${member.user.username}\nReporting: ${reportWho}`).setColor(0xe74c3c).setTimestamp()] });
+      }
+    }
+    
+    if (customId === 'support_modal_new') {
+      const helpWith = fields.getTextInputValue('support_help');
+      const description = fields.getTextInputValue('support_desc');
+      const hasProof = fields.getTextInputValue('support_proof');
+      
+      const category = settings?.support_category_id ? guild.channels.cache.get(settings.support_category_id) : null;
+      const channelName = `support-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      
+      const permissions = [
+        { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }
+      ];
+      if (settings?.staff_role_id) permissions.push({ id: settings.staff_role_id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] });
+      permissions.push({ id: client.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] });
+      
+      const ticketChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: category, permissionOverwrites: permissions });
+      createTicket(ticketChannel.id, guild.id, member.id, null, description, hasProof, 'support');
+      
+      const welcomeEmbed = new EmbedBuilder().setTitle('🆘 Support Ticket').setDescription(`Hello ${member}, thanks for contacting support!\n\nA staff member will assist you shortly.`).setColor(0x3498db).setImage(BANNER_IMAGE);
+      const detailsEmbed = new EmbedBuilder().setTitle('📋 Support Details').addFields(
+        { name: 'Help with', value: helpWith },
+        { name: 'Description', value: description },
+        { name: 'Proofs?', value: hasProof }
+      ).setColor(0x2b2d31);
+      
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+        new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+      );
+      
+      await ticketChannel.send({ content: `${member} <@&${settings?.staff_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
+      await interaction.reply({ content: `✅ Created: ${ticketChannel}`, ephemeral: true });
+      
+      if (settings?.log_channel_id) {
+        const logChannel = guild.channels.cache.get(settings.log_channel_id);
+        if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setTitle('🆘 Support').setDescription(`Support by ${member.user.username}\nIssue: ${helpWith}`).setColor(0x3498db).setTimestamp()] });
+      }
+    }
+    
+    if (customId === 'add_user_modal') {
+      const userInput = fields.getTextInputValue('user_id');
+      
+      let targetUser = null;
+      if (userInput.match(/^\d+$/)) targetUser = await guild.members.fetch(userInput).catch(() => null);
+      else {
+        const clean = userInput.replace(/[<@!>]/g, '');
+        if (clean.match(/^\d+$/)) targetUser = await guild.members.fetch(clean).catch(() => the middle of the deal if its not the Middleman's fault. (i.e. Wrong Crypto Address/Paypal email, wrong gamepass, wrong spelling for roblox usernamed for Lims Trades)\n\n• If one of our MM's goes afk during the middle of a ticket, it means they're busy with IRL things. Don't worry, they'll be back within the next few hours, you'll get pinged when they're there\n\n• We arent responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.`)
+          .setColor(0x2b2d31)
+          .setImage(BANNER_IMAGE);
+        await interaction.channel.send({ embeds: [embed] });
+        return interaction.reply({ content: '✅ TOS sent.', ephemeral: true });
+      }
+      
+      case 'faq': {
+        const embed = new EmbedBuilder()
+          .setTitle('Eldorado - FAQ')
+          .setDescription(`Eldorado is a platform that provides a secure player-to-player trading experience for buyers and sellers of online gaming products. We provide a system for secure transactions – you do the rest. We have marketplaces for 250+ games and leading titles!`)
+          .setColor(0xffd700)
+          .setImage(BANNER_IMAGE);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setLabel('Eldorado FAQ').setStyle(ButtonStyle.Link).setURL('https://www.eldorado.gg/faq').setEmoji('🔗'),
+          new ButtonBuilder().setLabel('Help Center').setStyle(ButtonStyle.Link).setURL('https://www.eldorado.gg/help').setEmoji('🔗')
+        );
+        await interaction.channel.send({ embeds: [embed], components: [row] });
+        return interaction.reply({ content: '✅ FAQ sent.', ephemeral: true });
+      }
+      
+      case 'site': {
+        const embed = new EmbedBuilder()
+          .setTitle('Eldorado.gg')
+          .setDescription('https://eldorado.gg/')
+          .setColor(0x00b67a)
+          .setImage(BANNER_IMAGE);
+        await interaction.channel.send({ embeds: [embed] });
+        return interaction.reply({ content: '✅ Site sent.', ephemeral: true });
+      }
+        
+      case 'trustpilot': {
+        const embed = new EmbedBuilder()
+          .setTitle('Eldorado.gg - Trustpilot')
+          .setDescription('Eldorado is rated "Excellent" with 4.4 / 5 on Trustpilot\nDo you agree with Eldorado\'s TrustScore? Voice your opinion today and hear what 40,984 customers have already said.')
+          .setColor(0x00b67a)
+          .setImage(BANNER_IMAGE);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setLabel('Eldorado - Trustpilot').setStyle(ButtonStyle.Link).setURL('https://www.trustpilot.com/review/eldorado.gg').setEmoji('🔗')
+        );
+        await interaction.channel.send({ embeds: [embed], components: [row] });
+        return interaction.reply({ content: '✅ Trustpilot sent.', ephemeral: true });
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    return interaction.reply({ content: '❌ Error.', ephemeral: true });
+  }
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  
+  const { customId, values, guild, member } = interaction;
+  
+  if (customId === 'ticket_selection') {
+    const selected = values[0];
+    
+    if (selected === 'report') {
+      const modal = new ModalBuilder()
+        .setCustomId('report_modal')
+        .setTitle('Report User');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('report_who').setLabel('Who are you reporting?').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Username or ID')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('report_proof').setLabel('Do you have proofs?').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Yes or No')),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('report_rules').setLabel('Will you stay and listen to rules?').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Yes or No'))
+      );
+      return interaction.showModal(modal);
+    }
+    
+    if (selected === 'support') {
+      const modal = new ModalBuilder()
+        .setCustomId('support_modal_new')
+        .setTitle('Support Request');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('support_help').setLabel('What do you need help with?').setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('support_desc').setLabel('Description').setStyle(TextInputStyle.Paragraph).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('support_proof').setLabel('Do you have proofs?').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Yes or No'))
+      );
+      return interaction.showModal(modal);
+    }
+  }
+});
+
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isButton()) return;
+  
+  const { customId, guild, member, channel } = interaction;
+  const settings = getSettings(guild.id);
+  
+  try {
+    if (customId === 'request_mm') {
+      const modal = new ModalBuilder()
+        .setCustomId('mm_modal')
+        .setTitle('Request Middleman');
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('other_user').setLabel('User/ID of other person').setStyle(TextInputStyle.Short).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('description').setLabel('Description').setStyle(TextInputStyle.Paragraph).setRequired(true)),
+        new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('can_join_ps').setLabel('Can both join ps').setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('Yes or No'))
+      );
+      return interaction.showModal(modal);
+    }
+    
+    if (customId === 'claim_ticket') {
+      const ticket = getTicket(channel.id);
+      if (!ticket) return interaction.reply({ content: '❌ Not a ticket.', ephemeral: true });
+      
+      const canClaim = ticket.ticket_type === 'main' ? isMiddleman(member, settings) : isStaff(member, settings);
+      if (!canClaim) return interaction.reply({ content: `❌ Only ${ticket.ticket_type === 'main' ? 'middleman' : 'staff'} can claim.`, ephemeral: true });
+      
+      if (ticket.claimed_by) {
+        const claimer = await guild.members.fetch(ticket.claimed_by).catch(() => null);
+        return interaction.reply({ content: `❌ Already claimed by ${claimer ? `<@${claimer.id}>` : 'Unknown'}`, ephemeral: true });
+      }
+      
+      claimTicket(channel.id, member.id);
+      
+      const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
+      const ticketRole = guild.roles.cache.get(roleId);
+      if (ticketRole) await channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true });
+      await channel.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
+      
+      const claimEmbed = new EmbedBuilder()
+        .setTitle('✅ Ticket Claimed')
+        .setDescription(`This ticket has been claimed by ${member}.\n\nClaimed by ${member.user.username}`)
+        .setColor(0x00ff00);
+      await channel.send({ embeds: [claimEmbed] });
+      
+      const messages = await channel.messages.fetch({ limit: 10 });
+      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
+      if (ticketMsg) {
+        await ticketMsg.edit({ components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
+          new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+          new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+          new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+        )] });
+      }
+      
+      await interaction.reply({ content: '✅ Claimed.', ephemeral: true });
+      
+      if (settings?.log_channel_id) {
+        const logChannel = guild.channels.cache.get(settings.log_channel_id);
+        if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setTitle('🎫 Claimed').setDescription(`${channel.name} claimed by ${member.user.username}`).setColor(0x00ff00).setTimestamp()] });
+      }
+    }
+    
+    if (customId === 'unclaim_ticket') {
+      const ticket = getTicket(channel.id);
+      if (!ticket) return interaction.reply({ content: '❌ Not a ticket.', ephemeral: true });
+      if (ticket.claimed_by !== member.id && !isAuthorized(member, guild)) return interaction.reply({ content: '❌ Only the claimer can unclaim.', ephemeral: true });
+      if (!ticket.claimed_by) return interaction.reply({ content: '❌ Not claimed.', ephemeral: true });
+      
+      unclaimTicket(channel.id);
+      
+      const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
+      const ticketRole = guild.roles.cache.get(roleId);
+      if (ticketRole) await channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
+      await channel.permissionOverwrites.delete(member.id).catch(() => {});
+      
+      const messages = await channel.messages.fetch({ limit: 10 });
+      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
+      if (ticketMsg) {
+        await ticketMsg.edit({ components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅'),
+          new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+          new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+          new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+        )] });
+      }
+      
+      return interaction.reply({ content: '✅ Unclaimed.', ephemeral: true });
+    }
+    
+    if (customId === 'close_ticket') {
+      const ticket = getTicket(channel.id);
+      if (!ticket) return interaction.reply({ content: '❌ Not a ticket.', ephemeral: true });
+      
+      const canClose = ticket.ticket_type === 'main' ? (isMiddleman(member, settings) || ticket.creator_id === member.id) : (isStaff(member, settings) || ticket.creator_id === member.id);
+      if (!canClose && !isAuthorized(member, guild)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
+      
+      await interaction.reply({ content: '🔒 Closing in 5s...', ephemeral: true });
+      
+      if (settings?.log_channel_id) {
+        const logChannel = guild.channels.cache.get(settings.log_channel_id);
+        if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setTitle('🔒 Closed').setDescription(`${channel.name} closed by ${member.user.username}`).setColor(0xff0000).setTimestamp()] });
+      }
+      
+      setTimeout(async () => {
+        deleteTicket(channel.id);
+        await channel.delete().catch(() => {});
+      }, 5000);
+    }
+    
+    if (customId === 'add_user') {
+      const ticket = getTicket(channel.id);
+      if (!ticket) return interaction.reply({ content: '❌ Not a ticket.', ephemeral: true });
+      
+      const isStaffOrMM = ticket.ticket_type === 'main' ? isMiddleman(member, settings) : isStaff(member, settings);
+      if (!isStaffOrMM) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
+      if (ticket.claimed_by && ticket.claimed_by !== member.id) return interaction.reply({ content: '❌ Only claimer can add.', ephemeral: true });
+      
+      const modal = new ModalBuilder().setCustomId('add_user_modal').setTitle('Add User');
+      modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true)));
+      return interaction.showModal(modal);
+    }
+
+    // MERCY SYSTEM BUTTONS
+    if (customId.startsWith('mercy_join_')) {
+      const targetUserId = customId.replace('mercy_join_', '');
+      
+      if (member.id !== targetUserId) {
+        return interaction.reply({ content: '❌ Only the mercied user can click this.', ephemeral: true });
+      }
+      
+      if (hasClickedMercy(member.id)) {
+        return interaction.reply({ content: '❌ Already clicked.', ephemeral: true });
+      }
+      
+      setMercyClicked(member.id, true);
+      
       if (settings?.slave_role_id) {
         const slaveRole = guild.roles.cache.get(settings.slave_role_id);
         if (slaveRole) {
@@ -1219,67 +1666,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     claimTicket(message.channel.id, targetUser.id);
     
-    if (isClaimed) await message.channel.permissionOverwrites.edit(message.author.id, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true });
-    await message.channel.permissionOverwrites.edit(targetUser.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
-    
-    const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
-    const ticketRole = message.guild.roles.cache.get(roleId);
-    if (ticketRole) await message.channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true });
-    
-    await message.reply(`✅ Transferred to ${targetUser}. You cannot type now.`);
-    
-    const messages = await message.channel.messages.fetch({ limit: 10 });
-    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket') || m.embeds[0]?.title?.includes('Report Ticket'));
-    if (ticketMsg) {
-      await ticketMsg.edit({ components: [new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
-        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
-        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
-        new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
-      )] });
-    }
-  }
-  
-  if (command === 'close') {
-    const canClose = ticket.ticket_type === 'main' ? (isMM || isCreator) : (isStaffMember || isCreator);
-    if (!canClose && !isAuthorized(message.member, message.guild)) return message.reply('❌ No permission.');
-    
-    await message.reply('🔒 Closing in 5s...');
-    
-    if (settings?.log_channel_id) {
-      const logChannel = message.guild.channels.cache.get(settings.log_channel_id);
-      if (logChannel) logChannel.send({ embeds: [new EmbedBuilder().setTitle('🔒 Closed').setDescription(`${message.channel.name} closed by ${message.author.username}`).setColor(0xff0000).setTimestamp()] });
-    }
-    
-    setTimeout(async () => {
-      deleteTicket(message.channel.id);
-      await message.channel.delete().catch(() => {});
-    }, 5000);
-  }
-  
-  if (command === 'claim') {
-    if (!canManage) return message.reply('❌ No permission.');
-    if (isClaimed) return message.reply(`❌ Claimed by <@${ticket.claimed_by}>`);
-    
-    claimTicket(message.channel.id, message.author.id);
-    
-    const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
-    const ticketRole = message.guild.roles.cache.get(roleId);
-    if (ticketRole) await message.channel.permissionOverwrites.edit(ticketRole, { ViewChannel: true, SendMessages: false, ReadMessageHistory: true });
-    await message.channel.permissionOverwrites.edit(message.author.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true });
-    
-    const claimEmbed = new EmbedBuilder().setTitle('✅ Ticket Claimed').setDescription(`('report').setEmoji('🚨'),
-              new StringSelectMenuOptionBuilder().setLabel('Support').setDescription('Get help').setValue('support').setEmoji('🆘')
-            )
-        );
-        await interaction.channel.send({ embeds: [embed], components: [row] });
-        return interaction.reply({ content: '✅ Panel sent.', ephemeral: true });
-      }
-      
-      case 'tos': {
-        const embed = new EmbedBuilder()
-          .setTitle('Eldorado.gg\nEldorado TOS')
-          .setDescription(`While using our Middleman Services, u must agree to a few things.\n\n• We are not responsible if anything happens in the middle of the deal if its not the Middleman's fault. (i.e. Wrong Crypto Address/Paypal email, wrong gamepass, wrong spelling for roblox usernamed for Lims Trades)\n\n• If one of our MM's goes afk during the middle of a ticket, it means they're busy with IRL things. Don't worry, they'll be back within the next few hours, you'll get pinged when they're there\n\n• We arent responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.`)
+    if (isClaimed) await message.channel.permissionOverwrites.edit the middle of the deal if its not the Middleman's fault. (i.e. Wrong Crypto Address/Paypal email, wrong gamepass, wrong spelling for roblox usernamed for Lims Trades)\n\n• If one of our MM's goes afk during the middle of a ticket, it means they're busy with IRL things. Don't worry, they'll be back within the next few hours, you'll get pinged when they're there\n\n• We arent responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.`)
           .setColor(0x2b2d31)
           .setImage(BANNER_IMAGE);
         await interaction.channel.send({ embeds: [embed] });
@@ -1500,7 +1887,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       setMercyClicked(member.id, true);
       
-      // Auto-assign slave role
       if (settings?.slave_role_id) {
         const slaveRole = guild.roles.cache.get(settings.slave_role_id);
         if (slaveRole) {
