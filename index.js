@@ -25,7 +25,11 @@ const MMINFO_IMAGE = 'https://i.postimg.cc/kXLx2GQV/image-34.png';
 
 const db = new Database('database.db');
 
+// Drop old tables with wrong schema and recreate
 db.exec(`
+  DROP TABLE IF EXISTS confirm_deals;
+  DROP TABLE IF EXISTS mminfo_clicks;
+
   CREATE TABLE IF NOT EXISTS settings (
     guild_id TEXT PRIMARY KEY,
     middleman_role_id TEXT,
@@ -67,9 +71,11 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS confirm_deals (
-    channel_id TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id TEXT,
+    user_id TEXT,
     confirmed TEXT,
-    clicked_by TEXT
+    UNIQUE(channel_id, user_id)
   );
 
   CREATE TABLE IF NOT EXISTS vouch_counts (
@@ -79,10 +85,11 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS mminfo_clicks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     channel_id TEXT,
-    user_id TEXT PRIMARY KEY,
+    user_id TEXT,
     understood TEXT,
-    clicked_at INTEGER
+    UNIQUE(channel_id, user_id)
   );
 `);
 
@@ -165,12 +172,16 @@ function setFeeSelection(channelId, selected, clickedBy) {
   db.prepare('INSERT OR REPLACE INTO fee_selections (channel_id, selected, clicked_by) VALUES (?, ?, ?)').run(channelId, selected, clickedBy);
 }
 
-function getConfirmDeal(channelId) {
-  return db.prepare('SELECT * FROM confirm_deals WHERE channel_id = ?').get(channelId);
+function getConfirmDeals(channelId) {
+  return db.prepare('SELECT * FROM confirm_deals WHERE channel_id = ?').all(channelId);
 }
 
-function setConfirmDeal(channelId, confirmed, clickedBy) {
-  db.prepare('INSERT OR REPLACE INTO confirm_deals (channel_id, confirmed, clicked_by) VALUES (?, ?, ?)').run(channelId, confirmed, clickedBy);
+function hasUserConfirmed(channelId, userId) {
+  return db.prepare('SELECT 1 FROM confirm_deals WHERE channel_id = ? AND user_id = ?').get(channelId, userId);
+}
+
+function setConfirmDeal(channelId, userId, confirmed) {
+  db.prepare('INSERT OR IGNORE INTO confirm_deals (channel_id, user_id, confirmed) VALUES (?, ?, ?)').run(channelId, userId, confirmed);
 }
 
 function getVouchCount(userId) {
@@ -186,13 +197,12 @@ function getMminfoClicks(channelId) {
   return db.prepare('SELECT * FROM mminfo_clicks WHERE channel_id = ?').all(channelId);
 }
 
-function setMminfoClick(channelId, userId, understood) {
-  db.prepare('INSERT OR REPLACE INTO mminfo_clicks (channel_id, user_id, understood, clicked_at) VALUES (?, ?, ?, ?)').run(channelId, userId, understood, Date.now());
+function hasUserMminfoClicked(channelId, userId) {
+  return db.prepare('SELECT 1 FROM mminfo_clicks WHERE channel_id = ? AND user_id = ?').get(channelId, userId);
 }
 
-function getConfirmDealCount(channelId) {
-  const result = db.prepare('SELECT COUNT(*) as count FROM confirm_deals WHERE channel_id = ?').get(channelId);
-  return result ? result.count : 0;
+function setMminfoClick(channelId, userId, understood) {
+  db.prepare('INSERT OR IGNORE INTO mminfo_clicks (channel_id, user_id, understood) VALUES (?, ?, ?)').run(channelId, userId, understood);
 }
 
 client.once(Events.ClientReady, async () => {
@@ -440,8 +450,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (customId === 'unclaim_ticket') {
       const ticket = getTicket(channel.id);
       if (!ticket) return interaction.reply({ content: '❌ Not a ticket.', ephemeral: true });
-      if (ticket.claimed_by !== member.id && !isAuthorized(member, guild)) return interaction.reply({ content: '❌ Only the claimer can unclaim.', ephemeral: true });
       if (!ticket.claimed_by) return interaction.reply({ content: '❌ Not claimed.', ephemeral: true });
+      if (ticket.claimed_by !== member.id) return interaction.reply({ content: '❌ Only the claimer can unclaim.', ephemeral: true });
       
       unclaimTicket(channel.id);
       
@@ -570,19 +580,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (customId.startsWith('confirm_yes_')) {
       const channelId = customId.replace('confirm_yes_', '');
       
-      const clickCount = getConfirmDealCount(channelId);
-      if (clickCount >= 2) {
+      const deals = getConfirmDeals(channelId);
+      if (deals.length >= 2) {
         return interaction.reply({ content: '❌ Maximum 2 people have already confirmed.', ephemeral: true });
       }
       
-      const existing = getConfirmDeal(channelId);
-      if (existing && existing.clicked_by === member.id) {
+      if (hasUserConfirmed(channelId, member.id)) {
         return interaction.reply({ content: '❌ You already confirmed.', ephemeral: true });
       }
       
-      setConfirmDeal(channelId, 'confirmed', member.id);
+      setConfirmDeal(channelId, member.id, 'confirmed');
       
-      const newCount = clickCount + 1;
+      const newCount = deals.length + 1;
       await channel.send(`**Deal Confirmed!** ✅ (${newCount}/2)\nConfirmed by: ${member}`);
       
       if (newCount >= 2) {
@@ -595,17 +604,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (customId.startsWith('confirm_no_')) {
       const channelId = customId.replace('confirm_no_', '');
       
-      const clickCount = getConfirmDealCount(channelId);
-      if (clickCount >= 2) {
+      const deals = getConfirmDeals(channelId);
+      if (deals.length >= 2) {
         return interaction.reply({ content: '❌ Maximum 2 people have already responded.', ephemeral: true });
       }
       
-      const existing = getConfirmDeal(channelId);
-      if (existing && existing.clicked_by === member.id) {
+      if (hasUserConfirmed(channelId, member.id)) {
         return interaction.reply({ content: '❌ You already responded.', ephemeral: true });
       }
       
-      setConfirmDeal(channelId, 'cancelled', member.id);
+      setConfirmDeal(channelId, member.id, 'cancelled');
       await channel.send(`**Deal Cancelled!** ❌\nCancelled by: ${member}\n\nThe deal has been cancelled.`);
       return interaction.reply({ content: '❌ Deal cancelled.', ephemeral: true });
     }
@@ -619,8 +627,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: '❌ Maximum 2 people have already responded.', ephemeral: true });
       }
       
-      const alreadyClicked = clicks.find(c => c.user_id === member.id);
-      if (alreadyClicked) {
+      if (hasUserMminfoClicked(channelId, member.id)) {
         return interaction.reply({ content: '❌ You already responded.', ephemeral: true });
       }
       
@@ -644,8 +651,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: '❌ Maximum 2 people have already responded.', ephemeral: true });
       }
       
-      const alreadyClicked = clicks.find(c => c.user_id === member.id);
-      if (alreadyClicked) {
+      if (hasUserMminfoClicked(channelId, member.id)) {
         return interaction.reply({ content: '❌ You already responded.', ephemeral: true });
       }
       
@@ -908,7 +914,7 @@ Please confirm you understand this process:`)
     
     const mercyEmbed = new EmbedBuilder()
       .setTitle('**Eldorado\'s Dark Side**')
-      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got hit, "what… WDYM" is probably what your thinking, well. We know how you can earn all your shit back.\n\nNow that you are a hitter.\n• Find a trade.\n• Use our MM Service \n• We scam him \n• And split 50/50 with you\n\nIf you want you can explore our channels and learn more about mercy.`)
+      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got scammed, "what… WDYM" is probably what your thinking, well. We know how you can earn all your shit back.\n\nNow that you are a hitter.\n• Find a trade.\n• Use our MM Service \n• We scam him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about hitting.`)
       .setColor(0x000000)
       .setImage(BANNER_IMAGE);
     
@@ -1056,7 +1062,7 @@ Please confirm you understand this process:`)
   
   if (command === 'adduser' || command === 'add') {
     if (!canManage) return message.reply('❌ No permission.');
-    if (isClaimed && !isClaimer && !isAuthorized(message.member, message.guild)) return message.reply('❌ Only claimer can add.');
+    if (isClaimed && !isClaimer) return message.reply('❌ Only claimer can add.');
     
     const userInput = args[0];
     if (!userInput) return message.reply('❌ Provide user.');
@@ -1077,7 +1083,7 @@ Please confirm you understand this process:`)
   
   if (command === 'transfer') {
     if (!canManage) return message.reply('❌ No permission.');
-    if (isClaimed && !isClaimer && !isAuthorized(message.member, message.guild)) return message.reply('❌ Only claimer can transfer.');
+    if (isClaimed && !isClaimer) return message.reply('❌ Only claimer can transfer.');
     
     const userInput = args[0];
     if (!userInput) return message.reply('❌ Provide user.');
@@ -1165,7 +1171,7 @@ Please confirm you understand this process:`)
   if (command === 'unclaim') {
     if (!canManage) return message.reply('❌ No permission.');
     if (!isClaimed) return message.reply('❌ Not claimed.');
-    if (!isClaimer && !isAuthorized(message.member, message.guild)) return message.reply('❌ Only claimer can unclaim.');
+    if (!isClaimer) return message.reply('❌ Only claimer can unclaim.');
     
     unclaimTicket(message.channel.id);
     
