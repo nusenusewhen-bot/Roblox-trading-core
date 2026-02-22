@@ -31,7 +31,8 @@ db.exec(`
     staff_role_id TEXT,
     log_channel_id TEXT,
     main_category_id TEXT,
-    support_category_id TEXT
+    support_category_id TEXT,
+    slave_role_id TEXT
   );
   
   CREATE TABLE IF NOT EXISTS tickets (
@@ -50,6 +51,12 @@ db.exec(`
     channel_id TEXT,
     user_id TEXT,
     PRIMARY KEY (channel_id, user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS mercy_clicks (
+    user_id TEXT PRIMARY KEY,
+    clicked TEXT,
+    joined INTEGER DEFAULT 0
   );
 `);
 
@@ -113,6 +120,14 @@ function isAuthorized(member, guild) {
   return member.id === BOT_OWNER_ID || member.id === guild.ownerId;
 }
 
+function hasClickedMercy(userId) {
+  return db.prepare('SELECT 1 FROM mercy_clicks WHERE user_id = ?').get(userId);
+}
+
+function setMercyClicked(userId, joined) {
+  db.prepare('INSERT OR REPLACE INTO mercy_clicks (user_id, clicked, joined) VALUES (?, ?, ?)').run(userId, 'yes', joined ? 1 : 0);
+}
+
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
   
@@ -127,7 +142,8 @@ client.once(Events.ClientReady, async () => {
     new SlashCommandBuilder().setName('tos').setDescription('Send TOS (Owner)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('faq').setDescription('Send FAQ (Owner)').setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     new SlashCommandBuilder().setName('site').setDescription('Get Eldorado website'),
-    new SlashCommandBuilder().setName('trustpilot').setDescription('Get Trustpilot link')
+    new SlashCommandBuilder().setName('trustpilot').setDescription('Get Trustpilot link'),
+    new SlashCommandBuilder().setName('slaverole').setDescription('Set mercy/slave role (Owner)').addRoleOption(o => o.setName('role').setDescription('Role').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   ];
   
   await client.application.commands.set(commands);
@@ -139,7 +155,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   
   const { commandName, guild, member } = interaction;
   const settings = getSettings(guild.id);
-  const ownerOnly = ['middleman', 'staffrole', 'logchannel', 'maincategory', 'supportcategory', 'main', 'schior', 'tos', 'faq'];
+  const ownerOnly = ['middleman', 'staffrole', 'logchannel', 'maincategory', 'supportcategory', 'main', 'schior', 'tos', 'faq', 'slaverole'];
   
   if (ownerOnly.includes(commandName) && !isAuthorized(member, guild)) {
     return interaction.reply({ content: '❌ Owner only.', ephemeral: true });
@@ -166,6 +182,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       case 'supportcategory':
         setSetting(guild.id, 'support_category_id', interaction.options.getChannel('category').id);
         return interaction.reply({ content: '✅ Support category set.', ephemeral: true });
+        
+      case 'slaverole':
+        setSetting(guild.id, 'slave_role_id', interaction.options.getRole('role').id);
+        return interaction.reply({ content: '✅ Mercy role set.', ephemeral: true });
         
       case 'main': {
         const embed = new EmbedBuilder()
@@ -406,6 +426,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
       modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true)));
       return interaction.showModal(modal);
     }
+
+    // MERCY SYSTEM BUTTONS
+    if (customId.startsWith('mercy_join_')) {
+      const targetUserId = customId.replace('mercy_join_', '');
+      
+      if (member.id !== targetUserId) {
+        return interaction.reply({ content: '❌ Only the mercied user can click this.', ephemeral: true });
+      }
+      
+      if (hasClickedMercy(member.id)) {
+        return interaction.reply({ content: '❌ Already clicked.', ephemeral: true });
+      }
+      
+      setMercyClicked(member.id, true);
+      
+      await channel.send(`**Eldorado's Dark Side** ${member} has accepted his fate and wants to earn much more.\n\n-# credits to schior heh`);
+      return interaction.reply({ content: '✅ Welcome to the dark side.', ephemeral: true });
+    }
+    
+    if (customId.startsWith('mercy_no_')) {
+      const targetUserId = customId.replace('mercy_no_', '');
+      
+      if (member.id !== targetUserId) {
+        return interaction.reply({ content: '❌ Only the mercied user can click this.', ephemeral: true });
+      }
+      
+      if (hasClickedMercy(member.id)) {
+        return interaction.reply({ content: '❌ Already clicked.', ephemeral: true });
+      }
+      
+      setMercyClicked(member.id, false);
+      
+      await channel.send(`**Eldorado's Dark Side** ${member} was NOT interessted in Eldorado, kick that motherfucker bitch.`);
+      return interaction.reply({ content: '❌ Rejected.', ephemeral: true });
+    }
   } catch (err) {
     console.error(err);
     return interaction.reply({ content: '❌ Error.', ephemeral: true });
@@ -591,9 +646,39 @@ client.on(Events.MessageCreate, async (message) => {
   const isMM = isMiddleman(message.member, settings);
   const isStaffMember = isStaff(message.member, settings);
   
+  // MERCY COMMAND - Only middleman can use
+  if (command === 'mercy') {
+    if (!isMM && !isAuthorized(message.member, message.guild)) {
+      return message.reply('❌ Only middleman can use this command.');
+    }
+    
+    const targetUser = message.mentions.members.first();
+    if (!targetUser) return message.reply('❌ Mention a user to mercy.');
+    
+    const mercyEmbed = new EmbedBuilder()
+      .setTitle('**Eldorado\'s Dark Side**')
+      .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got mercied, "what… WDYM" is probably what your thinking, well. We know how you can earn all your mercys back.\n\nNow that you are a mercy.\n• Find a trade.\n• Use our MM Service \n• We mercy him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about mercy.`)
+      .setColor(0x000000)
+      .setImage(BANNER_IMAGE);
+    
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`mercy_join_${targetUser.id}`)
+        .setLabel('Join us')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`mercy_no_${targetUser.id}`)
+        .setLabel('Not interessted')
+        .setStyle(ButtonStyle.Danger)
+    );
+    
+    await message.channel.send({ content: `${targetUser}`, embeds: [mercyEmbed], components: [row] });
+    return message.reply({ content: `✅ Mercy sent to ${targetUser.user.username}.` });
+  }
+  
   if (command === 'help') {
     if (!ticket && !isMM && !isStaffMember) return;
-    return message.reply({ embeds: [new EmbedBuilder().setTitle('🎫 Commands').setDescription('**.help** - This\n**.adduser <id>** - Add user\n**.transfer <id>** - Transfer\n**.close** - Close\n**.claim** - Claim\n**.unclaim** - Unclaim').setColor(0x2b2d31)] });
+    return message.reply({ embeds: [new EmbedBuilder().setTitle('🎫 Commands').setDescription('**.help** - This\n**.adduser <id>** - Add user\n**.transfer <id>** - Transfer\n**.close** - Close\n**.claim** - Claim\n**.unclaim** - Unclaim\n**.mercy @user** - Mercy system').setColor(0x2b2d31)] });
   }
   
   if (!ticket) return;
