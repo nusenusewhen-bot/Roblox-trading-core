@@ -1,0 +1,17 @@
+{
+  "name": "middleman-ticket-bot",
+  "version": "1.0.0",
+  "description": "Middleman Ticket Bot with claim system",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5",
+    "better-sqlite3": "^9.4.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
