@@ -14,6 +14,8 @@ const {
   TextInputStyle,
   ChannelType,
   Events,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder,
   PermissionsBitField
 } = require('discord.js');
 const Database = require('better-sqlite3');
@@ -21,7 +23,7 @@ const Database = require('better-sqlite3');
 // BOT OWNER ID - Can use all commands
 const BOT_OWNER_ID = '1298640383688970293';
 
-// BANNER IMAGE - Direct link from Postimages
+// BANNER IMAGE
 const BANNER_IMAGE = 'https://i.postimg.cc/rmNhJMw9/10d8aff99fc9a6a3878c3333114b5752.png';
 
 // Initialize Database
@@ -32,6 +34,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS settings (
     guild_id TEXT PRIMARY KEY,
     middleman_role_id TEXT,
+    staff_role_id TEXT,
     log_channel_id TEXT,
     main_category_id TEXT,
     support_category_id TEXT
@@ -78,6 +81,15 @@ function setMiddlemanRole(guildId, roleId) {
     db.prepare('UPDATE settings SET middleman_role_id = ? WHERE guild_id = ?').run(roleId, guildId);
   } else {
     db.prepare('INSERT INTO settings (guild_id, middleman_role_id) VALUES (?, ?)').run(guildId, roleId);
+  }
+}
+
+function setStaffRole(guildId, roleId) {
+  const exists = db.prepare('SELECT 1 FROM settings WHERE guild_id = ?').get(guildId);
+  if (exists) {
+    db.prepare('UPDATE settings SET staff_role_id = ? WHERE guild_id = ?').run(roleId, guildId);
+  } else {
+    db.prepare('INSERT INTO settings (guild_id, staff_role_id) VALUES (?, ?)').run(guildId, roleId);
   }
 }
 
@@ -147,7 +159,11 @@ function isMiddleman(member, settings) {
   return member.roles.cache.has(settings.middleman_role_id);
 }
 
-// Check if user is authorized (Bot Owner OR Server Owner)
+function isStaff(member, settings) {
+  if (!settings?.staff_role_id) return false;
+  return member.roles.cache.has(settings.staff_role_id);
+}
+
 function isAuthorized(member, guild) {
   if (member.id === BOT_OWNER_ID) return true;
   if (member.id === guild.ownerId) return true;
@@ -157,14 +173,18 @@ function isAuthorized(member, guild) {
 // Bot Ready
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
-  console.log(`✅ Bot Owner ID: ${BOT_OWNER_ID}`);
   
-  // Register Slash Commands
   const commands = [
     new SlashCommandBuilder()
       .setName('middleman')
       .setDescription('Set the middleman role (Owner only)')
       .addRoleOption(opt => opt.setName('role').setDescription('Middleman role').setRequired(true))
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+      
+    new SlashCommandBuilder()
+      .setName('staffrole')
+      .setDescription('Set the staff role for support/report tickets (Owner only)')
+      .addRoleOption(opt => opt.setName('role').setDescription('Staff role').setRequired(true))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       
     new SlashCommandBuilder()
@@ -181,7 +201,7 @@ client.once(Events.ClientReady, async () => {
       
     new SlashCommandBuilder()
       .setName('supportcategory')
-      .setDescription('Set category for support tickets (Owner only)')
+      .setDescription('Set category for support/report tickets (Owner only)')
       .addChannelOption(opt => opt.setName('category').setDescription('Category for support tickets').setRequired(true).addChannelTypes(ChannelType.GuildCategory))
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       
@@ -191,8 +211,8 @@ client.once(Events.ClientReady, async () => {
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       
     new SlashCommandBuilder()
-      .setName('support')
-      .setDescription('Send support ticket panel (Owner only)')
+      .setName('schior')
+      .setDescription('Send support/report panel (Owner only)')
       .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
       
     new SlashCommandBuilder()
@@ -221,7 +241,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const { commandName, guild, member } = interaction;
   const settings = getSettings(guild.id);
   
-  // Check authorization (Bot owner OR Server owner)
   if (!isAuthorized(member, guild)) {
     return interaction.reply({ content: '❌ Only server owner or bot owner can use this command.', ephemeral: true });
   }
@@ -232,6 +251,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const role = interaction.options.getRole('role');
         setMiddlemanRole(guild.id, role.id);
         await interaction.reply({ content: `✅ Middleman role set to ${role}`, ephemeral: true });
+        break;
+      }
+      
+      case 'staffrole': {
+        const role = interaction.options.getRole('role');
+        setStaffRole(guild.id, role.id);
+        await interaction.reply({ content: `✅ Staff role set to ${role}`, ephemeral: true });
         break;
       }
       
@@ -258,7 +284,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       case 'main': {
         const embed = new EmbedBuilder()
-          .setTitle('# Make A Ticket!')
+          .setTitle('Eldorado Middleman Service')
           .setDescription(`Found a trade and would like to ensure a safe trading experience?
 See below.
 
@@ -291,27 +317,39 @@ See below.
         break;
       }
       
-      case 'support': {
+      case 'schior': {
         const embed = new EmbedBuilder()
-          .setTitle('🆘 Support Ticket')
-          .setDescription(`**Need Help?**
+          .setTitle('Welcome to Eldorado Support/Report')
+          .setDescription(`**ToS:**
+• Make sense if making ticket.
+• Dont ping staff.
+• If you got scammed, Gather proofs.
+• Do not come without proof.
 
-Click the button below to create a support ticket. Our staff will assist you shortly.
-
-Please provide as much detail as possible about your issue.`)
-          .setColor(0x3498db)
+Hello this is Support/Report, recently got scammed? damn.. make a ticket and we will help!!`)
+          .setColor(0xe74c3c)
           .setImage(BANNER_IMAGE);
           
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('request_support')
-            .setLabel('Create Support Ticket')
-            .setStyle(ButtonStyle.Primary)
-            .setEmoji('🎫')
+          new StringSelectMenuBuilder()
+            .setCustomId('ticket_selection')
+            .setPlaceholder('Select ticket type...')
+            .addOptions(
+              new StringSelectMenuOptionBuilder()
+                .setLabel('Report')
+                .setDescription('Report a user or issue')
+                .setValue('report')
+                .setEmoji('🚨'),
+              new StringSelectMenuOptionBuilder()
+                .setLabel('Support')
+                .setDescription('Get help with something')
+                .setValue('support')
+                .setEmoji('🆘')
+            )
         );
         
         await interaction.channel.send({ embeds: [embed], components: [row] });
-        await interaction.reply({ content: '✅ Support panel sent!', ephemeral: true });
+        await interaction.reply({ content: '✅ Support/Report panel sent!', ephemeral: true });
         break;
       }
       
@@ -364,6 +402,87 @@ Please provide as much detail as possible about your issue.`)
   }
 });
 
+// Select Menu Handler
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isStringSelectMenu()) return;
+  
+  const { customId, values, guild, member } = interaction;
+  
+  if (customId === 'ticket_selection') {
+    const selected = values[0];
+    
+    if (selected === 'report') {
+      const modal = new ModalBuilder()
+        .setCustomId('report_modal')
+        .setTitle('Report User');
+        
+      const whoInput = new TextInputBuilder()
+        .setCustomId('report_who')
+        .setLabel('Who are you reporting?')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder('Username or ID');
+        
+      const proofInput = new TextInputBuilder()
+        .setCustomId('report_proof')
+        .setLabel('Do you have proofs?')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder('Yes or No');
+        
+      const rulesInput = new TextInputBuilder()
+        .setCustomId('report_rules')
+        .setLabel('Will you stay and listen to the rules?')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder('Yes or No');
+        
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(whoInput),
+        new ActionRowBuilder().addComponents(proofInput),
+        new ActionRowBuilder().addComponents(rulesInput)
+      );
+      
+      await interaction.showModal(modal);
+    }
+    
+    else if (selected === 'support') {
+      const modal = new ModalBuilder()
+        .setCustomId('support_modal_new')
+        .setTitle('Support Request');
+        
+      const helpInput = new TextInputBuilder()
+        .setCustomId('support_help')
+        .setLabel('What do you need help with?')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder('Brief description');
+        
+      const descInput = new TextInputBuilder()
+        .setCustomId('support_desc')
+        .setLabel('Description')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setPlaceholder('Detailed explanation...');
+        
+      const proofInput = new TextInputBuilder()
+        .setCustomId('support_proof')
+        .setLabel('Do you have proofs?')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setPlaceholder('Yes or No');
+        
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(helpInput),
+        new ActionRowBuilder().addComponents(descInput),
+        new ActionRowBuilder().addComponents(proofInput)
+      );
+      
+      await interaction.showModal(modal);
+    }
+  }
+});
+
 // Button Handler
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isButton()) return;
@@ -407,39 +526,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.showModal(modal);
     }
     
-    else if (customId === 'request_support') {
-      const modal = new ModalBuilder()
-        .setCustomId('support_modal')
-        .setTitle('Support Request');
-        
-      const issueInput = new TextInputBuilder()
-        .setCustomId('issue')
-        .setLabel('Describe your issue')
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true)
-        .setPlaceholder('Explain what you need help with...');
-        
-      const priorityInput = new TextInputBuilder()
-        .setCustomId('priority')
-        .setLabel('Priority (Low/Medium/High)')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true)
-        .setPlaceholder('Low, Medium, or High');
-        
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(issueInput),
-        new ActionRowBuilder().addComponents(priorityInput)
-      );
-      
-      await interaction.showModal(modal);
-    }
-    
     else if (customId === 'claim_ticket') {
       const ticket = getTicket(channel.id);
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
       
-      if (!isMiddleman(member, settings)) {
-        return interaction.reply({ content: '❌ Only middlemen can claim tickets.', ephemeral: true });
+      const canClaim = ticket.ticket_type === 'main' ? isMiddleman(member, settings) : isStaff(member, settings);
+      if (!canClaim) {
+        const roleName = ticket.ticket_type === 'main' ? 'middleman' : 'staff';
+        return interaction.reply({ content: `❌ Only ${roleName} can claim tickets.`, ephemeral: true });
       }
       
       if (ticket.claimed_by) {
@@ -449,9 +543,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       claimTicket(channel.id, member.id);
       
-      const middlemanRole = guild.roles.cache.get(settings.middleman_role_id);
-      if (middlemanRole) {
-        await channel.permissionOverwrites.edit(middlemanRole, {
+      const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
+      const ticketRole = guild.roles.cache.get(roleId);
+      
+      if (ticketRole) {
+        await channel.permissionOverwrites.edit(ticketRole, {
           ViewChannel: true,
           SendMessages: false,
           ReadMessageHistory: true
@@ -472,7 +568,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await channel.send({ embeds: [claimEmbed] });
       
       const messages = await channel.messages.fetch({ limit: 10 });
-      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+      const ticketMsg = messages.find(m => 
+        m.embeds[0]?.title?.includes('Eldorado Middleman Service') || 
+        m.embeds[0]?.title?.includes('Welcome to your Ticket') ||
+        m.embeds[0]?.title?.includes('Support Ticket') ||
+        m.embeds[0]?.title?.includes('Report Ticket')
+      );
+      
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
@@ -502,14 +604,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
       
       if (ticket.claimed_by !== member.id && !isAuthorized(member, guild)) {
-        return interaction.reply({ content: '❌ Only the claimed middleman can unclaim.', ephemeral: true });
+        return interaction.reply({ content: '❌ Only the claimed staff can unclaim.', ephemeral: true });
       }
       
       unclaimTicket(channel.id);
       
-      const middlemanRole = guild.roles.cache.get(settings.middleman_role_id);
-      if (middlemanRole) {
-        await channel.permissionOverwrites.edit(middlemanRole, {
+      const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
+      const ticketRole = guild.roles.cache.get(roleId);
+      
+      if (ticketRole) {
+        await channel.permissionOverwrites.edit(ticketRole, {
           ViewChannel: true,
           SendMessages: true,
           ReadMessageHistory: true
@@ -521,7 +625,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await channel.send({ content: `🔓 ${member} has unclaimed this ticket.` });
       
       const messages = await channel.messages.fetch({ limit: 10 });
-      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+      const ticketMsg = messages.find(m => 
+        m.embeds[0]?.title?.includes('Eldorado Middleman Service') || 
+        m.embeds[0]?.title?.includes('Welcome to your Ticket') ||
+        m.embeds[0]?.title?.includes('Support Ticket') ||
+        m.embeds[0]?.title?.includes('Report Ticket')
+      );
+      
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
@@ -538,8 +648,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticket = getTicket(channel.id);
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
       
-      if (!isMiddleman(member, settings) && ticket.creator_id !== member.id && !isAuthorized(member, guild)) {
-        return interaction.reply({ content: '❌ Only middlemen or the ticket creator can close.', ephemeral: true });
+      const canClose = ticket.ticket_type === 'main' ? 
+        (isMiddleman(member, settings) || ticket.creator_id === member.id) : 
+        (isStaff(member, settings) || ticket.creator_id === member.id);
+        
+      if (!canClose && !isAuthorized(member, guild)) {
+        return interaction.reply({ content: '❌ Only staff or the ticket creator can close.', ephemeral: true });
       }
       
       await interaction.reply({ content: '🔒 Closing ticket in 5 seconds...', ephemeral: true });
@@ -570,12 +684,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticket = getTicket(channel.id);
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
       
-      if (!isMiddleman(member, settings)) {
-        return interaction.reply({ content: '❌ Only middlemen can add users.', ephemeral: true });
+      const isStaffOrMM = ticket.ticket_type === 'main' ? isMiddleman(member, settings) : isStaff(member, settings);
+      if (!isStaffOrMM) {
+        const roleName = ticket.ticket_type === 'main' ? 'middleman' : 'staff';
+        return interaction.reply({ content: `❌ Only ${roleName} can add users.`, ephemeral: true });
       }
       
       if (ticket.claimed_by && ticket.claimed_by !== member.id) {
-        return interaction.reply({ content: '❌ Only the claimed middleman can add users.', ephemeral: true });
+        return interaction.reply({ content: '❌ Only the claimed staff can add users.', ephemeral: true });
       }
       
       const modal = new ModalBuilder()
@@ -615,14 +731,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (otherUserInput.match(/^\d+$/)) {
         otherUser = await guild.members.fetch(otherUserInput).catch(() => null);
       } else {
-        otherUser = guild.members.cache.find(m => m.user.username.toLowerCase() === otherUserInput.toLowerCase() || m.user.tag.toLowerCase() === otherUserInput.toLowerCase());
+        otherUser = guild.members.cache.find(m => 
+          m.user.username.toLowerCase() === otherUserInput.toLowerCase() || 
+          m.user.tag.toLowerCase() === otherUserInput.toLowerCase()
+        );
       }
       
       const otherUserId = otherUser ? otherUser.id : otherUserInput;
       const otherUserDisplay = otherUser ? `${otherUser.user.username} (<@${otherUser.id}>)` : otherUserInput;
       
       const category = settings?.main_category_id ? guild.channels.cache.get(settings.main_category_id) : null;
-      
       const channelName = `mm-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
       
       const permissions = [
@@ -679,6 +797,7 @@ Eldorado MM Service • Please wait for a middleman`)
         
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
       );
@@ -688,7 +807,7 @@ Eldorado MM Service • Please wait for a middleman`)
       if (otherUser) {
         const foundEmbed = new EmbedBuilder()
           .setTitle('✅ User Found')
-          .setDescription(`User <@${otherUser.id}> (ID: ${otherUser.id}) was found in the server.\n\nYou can add them to the ticket by using \`.add ${otherUser.user.username}\` or \`.add ${otherUser.id}\`, or by clicking the **Add User** button above — it will add the other trader automatically.`)
+          .setDescription(`User <@${otherUser.id}> (ID: ${otherUser.id}) was found in the server.\n\nYou can add them to the ticket by using \`.add ${otherUser.user.username}\` or \`.add ${otherUser.id}\`, or by clicking the **Add User** button above.`)
           .setColor(0x00ff00)
           .setThumbnail(otherUser.user.displayAvatarURL());
         await ticketChannel.send({ embeds: [foundEmbed] });
@@ -714,13 +833,13 @@ Eldorado MM Service • Please wait for a middleman`)
       }
     }
     
-    else if (customId === 'support_modal') {
-      const issue = fields.getTextInputValue('issue');
-      const priority = fields.getTextInputValue('priority');
+    else if (customId === 'report_modal') {
+      const reportWho = fields.getTextInputValue('report_who');
+      const hasProof = fields.getTextInputValue('report_proof');
+      const willListen = fields.getTextInputValue('report_rules');
       
       const category = settings?.support_category_id ? guild.channels.cache.get(settings.support_category_id) : null;
-      
-      const channelName = `support-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      const channelName = `report-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
       
       const permissions = [
         {
@@ -733,9 +852,9 @@ Eldorado MM Service • Please wait for a middleman`)
         }
       ];
       
-      if (settings?.middleman_role_id) {
+      if (settings?.staff_role_id) {
         permissions.push({
-          id: settings.middleman_role_id,
+          id: settings.staff_role_id,
           allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
         });
       }
@@ -752,7 +871,92 @@ Eldorado MM Service • Please wait for a middleman`)
         permissionOverwrites: permissions
       });
       
-      createTicket(ticketChannel.id, guild.id, member.id, null, issue, priority, 'support');
+      createTicket(ticketChannel.id, guild.id, member.id, null, `Reporting: ${reportWho}`, hasProof, 'report');
+      
+      const welcomeEmbed = new EmbedBuilder()
+        .setTitle('🚨 Report Ticket')
+        .setDescription(`Hello ${member}, thanks for opening a **Report Ticket**!
+
+A staff member will assist you shortly. Please provide all evidence and be patient.`)
+        .setColor(0xe74c3c)
+        .setImage(BANNER_IMAGE);
+        
+      const detailsEmbed = new EmbedBuilder()
+        .setTitle('📋 Report Details')
+        .addFields(
+          { name: 'Who are you reporting?', value: reportWho },
+          { name: 'Do you have proofs?', value: hasProof },
+          { name: 'Will you stay and listen to rules?', value: willListen }
+        )
+        .setColor(0x2b2d31);
+        
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+        new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+      );
+      
+      await ticketChannel.send({ content: `${member} <@&${settings?.staff_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
+      
+      await interaction.reply({ content: `✅ Report ticket created: ${ticketChannel}`, ephemeral: true });
+      
+      if (settings?.log_channel_id) {
+        const logChannel = guild.channels.cache.get(settings.log_channel_id);
+        if (logChannel) {
+          const logEmbed = new EmbedBuilder()
+            .setTitle('🚨 Report Ticket Created')
+            .setDescription(`New report ticket created by ${member.user.username}`)
+            .addFields(
+              { name: 'Channel', value: `${ticketChannel}`, inline: true },
+              { name: 'Reporting', value: reportWho, inline: true }
+            )
+            .setColor(0xe74c3c)
+            .setTimestamp();
+          logChannel.send({ embeds: [logEmbed] });
+        }
+      }
+    }
+    
+    else if (customId === 'support_modal_new') {
+      const helpWith = fields.getTextInputValue('support_help');
+      const description = fields.getTextInputValue('support_desc');
+      const hasProof = fields.getTextInputValue('support_proof');
+      
+      const category = settings?.support_category_id ? guild.channels.cache.get(settings.support_category_id) : null;
+      const channelName = `support-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      
+      const permissions = [
+        {
+          id: guild.id,
+          deny: [PermissionFlagsBits.ViewChannel]
+        },
+        {
+          id: member.id,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+        }
+      ];
+      
+      if (settings?.staff_role_id) {
+        permissions.push({
+          id: settings.staff_role_id,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+        });
+      }
+      
+      permissions.push({
+        id: client.user.id,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels]
+      });
+      
+      const ticketChannel = await guild.channels.create({
+        name: channelName,
+        type: ChannelType.GuildText,
+        parent: category,
+        permissionOverwrites: permissions
+      });
+      
+      createTicket(ticketChannel.id, guild.id, member.id, null, description, hasProof, 'support');
       
       const welcomeEmbed = new EmbedBuilder()
         .setTitle('🆘 Support Ticket')
@@ -763,20 +967,22 @@ A staff member will assist you shortly. Please provide any additional informatio
         .setImage(BANNER_IMAGE);
         
       const detailsEmbed = new EmbedBuilder()
-        .setTitle('📋 Issue Details')
+        .setTitle('📋 Support Details')
         .addFields(
-          { name: 'Issue', value: issue },
-          { name: 'Priority', value: priority || 'Not specified' }
+          { name: 'What do you need help with?', value: helpWith },
+          { name: 'Description', value: description },
+          { name: 'Do you have proofs?', value: hasProof }
         )
         .setColor(0x2b2d31);
         
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
       );
       
-      await ticketChannel.send({ content: `${member} <@&${settings?.middleman_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
+      await ticketChannel.send({ content: `${member} <@&${settings?.staff_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
       
       await interaction.reply({ content: `✅ Support ticket created: ${ticketChannel}`, ephemeral: true });
       
@@ -788,8 +994,7 @@ A staff member will assist you shortly. Please provide any additional informatio
             .setDescription(`New support ticket created by ${member.user.username}`)
             .addFields(
               { name: 'Channel', value: `${ticketChannel}`, inline: true },
-              { name: 'Priority', value: priority || 'Not specified', inline: true },
-              { name: 'Type', value: 'Support', inline: true }
+              { name: 'Issue', value: helpWith, inline: true }
             )
             .setColor(0x3498db)
             .setTimestamp();
@@ -834,7 +1039,7 @@ A staff member will assist you shortly. Please provide any additional informatio
   }
 });
 
-// Text Command Handler (Prefix commands for middlemen)
+// Text Command Handler
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
   
@@ -848,18 +1053,20 @@ client.on(Events.MessageCreate, async (message) => {
   const command = args.shift().toLowerCase();
   
   const isMM = isMiddleman(message.member, settings);
+  const isStaffMember = isStaff(message.member, settings);
   
   if (command === 'help') {
-    if (!ticket && !isMM) return;
+    if (!ticket && !isMM && !isStaffMember) return;
     
     const helpEmbed = new EmbedBuilder()
-      .setTitle('🎫 Middleman Commands')
+      .setTitle('🎫 Staff Commands')
       .setDescription(`
 **.help** - Shows this message
 **.adduser <id/@user>** - Adds user to ticket
-**.transfer <id/@user>** - Transfers ticket to another middleman
+**.transfer <id/@user>** - Transfers ticket to another staff
 **.close** - Closes the ticket
-**.claim** - Claims the ticket (alternative to button)
+**.claim** - Claims the ticket
+**.unclaim** - Unclaims the ticket
       `)
       .setColor(0x2b2d31);
     return message.reply({ embeds: [helpEmbed] });
@@ -871,10 +1078,12 @@ client.on(Events.MessageCreate, async (message) => {
   const isClaimed = !!ticket.claimed_by;
   const isClaimer = ticket.claimed_by === message.author.id;
   
+  const canManage = ticket.ticket_type === 'main' ? isMM : isStaffMember;
+  
   if (command === 'adduser' || command === 'add') {
-    if (!isMM) return message.reply('❌ Only middlemen can use this.');
+    if (!canManage) return message.reply('❌ Only staff can use this.');
     if (isClaimed && !isClaimer && !isAuthorized(message.member, message.guild)) {
-      return message.reply('❌ Only the claimed middleman can add users.');
+      return message.reply('❌ Only the claimed staff can add users.');
     }
     
     const userInput = args[0];
@@ -905,13 +1114,13 @@ client.on(Events.MessageCreate, async (message) => {
   }
   
   if (command === 'transfer') {
-    if (!isMM) return message.reply('❌ Only middlemen can use this.');
+    if (!canManage) return message.reply('❌ Only staff can use this.');
     if (isClaimed && !isClaimer && !isAuthorized(message.member, message.guild)) {
-      return message.reply('❌ Only the claimed middleman can transfer.');
+      return message.reply('❌ Only the claimed staff can transfer.');
     }
     
     const userInput = args[0];
-    if (!userInput) return message.reply('❌ Please provide a middleman ID or mention.');
+    if (!userInput) return message.reply('❌ Please provide a staff ID or mention.');
     
     let targetUser = null;
     if (userInput.match(/^\d+$/)) {
@@ -922,7 +1131,12 @@ client.on(Events.MessageCreate, async (message) => {
     }
     
     if (!targetUser) return message.reply('❌ User not found.');
-    if (!isMiddleman(targetUser, settings)) return message.reply('❌ Target user is not a middleman.');
+    
+    const targetCanManage = ticket.ticket_type === 'main' ? 
+      isMiddleman(targetUser, settings) : 
+      isStaff(targetUser, settings);
+      
+    if (!targetCanManage) return message.reply('❌ Target user is not staff.');
     if (targetUser.id === message.author.id) return message.reply('❌ You cannot transfer to yourself.');
     
     claimTicket(message.channel.id, targetUser.id);
@@ -941,9 +1155,11 @@ client.on(Events.MessageCreate, async (message) => {
       ReadMessageHistory: true
     });
     
-    const middlemanRole = message.guild.roles.cache.get(settings.middleman_role_id);
-    if (middlemanRole) {
-      await message.channel.permissionOverwrites.edit(middlemanRole, {
+    const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
+    const ticketRole = message.guild.roles.cache.get(roleId);
+    
+    if (ticketRole) {
+      await message.channel.permissionOverwrites.edit(ticketRole, {
         ViewChannel: true,
         SendMessages: false,
         ReadMessageHistory: true
@@ -953,7 +1169,13 @@ client.on(Events.MessageCreate, async (message) => {
     message.reply(`✅ Ticket transferred to ${targetUser}. You can no longer send messages in this ticket.`);
     
     const messages = await message.channel.messages.fetch({ limit: 10 });
-    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+    const ticketMsg = messages.find(m => 
+      m.embeds[0]?.title?.includes('Eldorado Middleman Service') || 
+      m.embeds[0]?.title?.includes('Welcome to your Ticket') ||
+      m.embeds[0]?.title?.includes('Support Ticket') ||
+      m.embeds[0]?.title?.includes('Report Ticket')
+    );
+    
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
@@ -965,7 +1187,11 @@ client.on(Events.MessageCreate, async (message) => {
   }
   
   if (command === 'close') {
-    if (!isMM && !isCreator && !isAuthorized(message.member, message.guild)) return message.reply('❌ Only middlemen or the creator can close.');
+    const canClose = ticket.ticket_type === 'main' ? 
+      (isMM || isCreator) : 
+      (isStaffMember || isCreator);
+      
+    if (!canClose && !isAuthorized(message.member, message.guild)) return message.reply('❌ Only staff or the creator can close.');
     
     await message.reply('🔒 Closing ticket in 5 seconds...');
     
@@ -988,14 +1214,16 @@ client.on(Events.MessageCreate, async (message) => {
   }
   
   if (command === 'claim') {
-    if (!isMM) return message.reply('❌ Only middlemen can claim tickets.');
+    if (!canManage) return message.reply('❌ Only staff can claim tickets.');
     if (isClaimed) return message.reply(`❌ Ticket already claimed by <@${ticket.claimed_by}>`);
     
     claimTicket(message.channel.id, message.author.id);
     
-    const middlemanRole = message.guild.roles.cache.get(settings.middleman_role_id);
-    if (middlemanRole) {
-      await message.channel.permissionOverwrites.edit(middlemanRole, {
+    const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
+    const ticketRole = message.guild.roles.cache.get(roleId);
+    
+    if (ticketRole) {
+      await message.channel.permissionOverwrites.edit(ticketRole, {
         ViewChannel: true,
         SendMessages: false,
         ReadMessageHistory: true
@@ -1017,9 +1245,59 @@ client.on(Events.MessageCreate, async (message) => {
     message.reply('✅ You have claimed this ticket.');
     
     const messages = await message.channel.messages.fetch({ limit: 10 });
-    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+    const ticketMsg = messages.find(m => 
+      m.embeds[0]?.title?.includes('Eldorado Middleman Service') || 
+      m.embeds[0]?.title?.includes('Welcome to your Ticket') ||
+      m.embeds[0]?.title?.includes('Support Ticket') ||
+      m.embeds[0]?.title?.includes('Report Ticket')
+    );
+    
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
+        new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
+        new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
+      );
+      await ticketMsg.edit({ components: [row] });
+    }
+  }
+  
+  if (command === 'unclaim') {
+    if (!canManage) return message.reply('❌ Only staff can unclaim tickets.');
+    if (!isClaimed) return message.reply('❌ This ticket is not claimed.');
+    if (!isClaimer && !isAuthorized(message.member, message.guild)) {
+      return message.reply('❌ Only the claimed staff can unclaim this ticket.');
+    }
+    
+    unclaimTicket(message.channel.id);
+    
+    const roleId = ticket.ticket_type === 'main' ? settings?.middleman_role_id : settings?.staff_role_id;
+    const ticketRole = message.guild.roles.cache.get(roleId);
+    
+    if (ticketRole) {
+      await message.channel.permissionOverwrites.edit(ticketRole, {
+        ViewChannel: true,
+        SendMessages: true,
+        ReadMessageHistory: true
+      });
+    }
+    
+    await message.channel.permissionOverwrites.delete(message.author.id).catch(() => {});
+    
+    await message.channel.send({ content: `🔓 ${message.author} has unclaimed this ticket.` });
+    message.reply('✅ You have unclaimed this ticket.');
+    
+    const messages = await message.channel.messages.fetch({ limit: 10 });
+    const ticketMsg = messages.find(m => 
+      m.embeds[0]?.title?.includes('Eldorado Middleman Service') || 
+      m.embeds[0]?.title?.includes('Welcome to your Ticket') ||
+      m.embeds[0]?.title?.includes('Support Ticket') ||
+      m.embeds[0]?.title?.includes('Report Ticket')
+    );
+    
+    if (ticketMsg) {
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
