@@ -20,7 +20,6 @@ const {
 const Database = require('better-sqlite3');
 
 const BOT_OWNER_ID = '1298640383688970293';
-const BANNER_IMAGE = 'https://i.postimg.cc/kXLx2GQV/image-34.png';
 const MMINFO_IMAGE = 'https://i.postimg.cc/kXLx2GQV/image-34.png';
 
 const db = new Database('database.db');
@@ -265,8 +264,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle('Amz Middleman Service')
           .setDescription(`Found a trade and would like to ensure a safe trading experience?\nSee below.\n\n**Trade Details:**\n• Item/Currency from trader 1: eg. *MFR Parrot in ADM*\n• Item/Currency from trader 2: eg. *100$*\n\n**Trade Agreement:**\n• Both parties have agreed to the trade details\n• Ready to proceed using middle man service\n\n**Important Notes:**\n• Both users must agree before submitting\n• Fake/troll tickets will result in consequences\n• Be specific – vague terms are not accepted\n• Follow Discord TOS and server guidelines`)
-          .setColor(0x2b2d31)
-          .setImage(BANNER_IMAGE);
+          .setColor(0x2b2d31);
         const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('request_mm').setLabel('Open a Ticket').setStyle(ButtonStyle.Primary).setEmoji('🎫'));
         await interaction.channel.send({ embeds: [embed], components: [row] });
         return interaction.reply({ content: '✅ Panel sent.', ephemeral: true });
@@ -276,8 +274,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle('Welcome to Amz Support/Report')
           .setDescription(`**ToS:**\n• Make sense if making ticket.\n• Dont ping staff.\n• If you got scammed, Gather proofs.\n• Do not come without proof.\n\nHello this is Support/Report, recently got scammed? damn.. make a ticket and we will help!!`)
-          .setColor(0xe74c3c)
-          .setImage(BANNER_IMAGE);
+          .setColor(0xe74c3c);
         const row = new ActionRowBuilder().addComponents(
           new StringSelectMenuBuilder()
             .setCustomId('ticket_selection')
@@ -295,8 +292,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle('Amz.gg\nAmz TOS')
           .setDescription("While using our Middleman Services, u must agree to a few things.\n\n• We are not responsible if anything happens in the middle of the deal if its not the Middleman's fault. (i.e. Wrong Crypto Address/Paypal email, wrong gamepass, wrong spelling for roblox username for Lims Trades)\n\n• If one of our MM's goes afk during the middle of a ticket, it means they're busy with IRL things. Don't worry, they'll be back within the next few hours, you'll get pinged when they're there\n\n• We aren't responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.")
-          .setColor(0x2b2d31)
-          .setImage(BANNER_IMAGE);
+          .setColor(0x2b2d31);
         await interaction.channel.send({ embeds: [embed] });
         return interaction.reply({ content: '✅ TOS sent.', ephemeral: true });
       }
@@ -305,8 +301,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle('Amz - FAQ')
           .setDescription(`Amz is a platform that provides a secure player-to-player trading experience for buyers and sellers of online gaming products. We provide a system for secure transactions – you do the rest. We have marketplaces for 250+ games and leading titles!`)
-          .setColor(0xffd700)
-          .setImage(BANNER_IMAGE);
+          .setColor(0xffd700);
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setLabel('Amz FAQ').setStyle(ButtonStyle.Link).setURL('https://www.amz.gg/faq').setEmoji('🔗'),
           new ButtonBuilder().setLabel('Help Center').setStyle(ButtonStyle.Link).setURL('https://www.amz.gg/help').setEmoji('🔗')
@@ -319,8 +314,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle('Amz.gg')
           .setDescription('https://amz.gg/')
-          .setColor(0x00b67a)
-          .setImage(BANNER_IMAGE);
+          .setColor(0x00b67a);
         await interaction.channel.send({ embeds: [embed] });
         return interaction.reply({ content: '✅ Site sent.', ephemeral: true });
       }
@@ -329,8 +323,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle('Amz.gg - Trustpilot')
           .setDescription('Amz is rated "Excellent" with 4.4 / 5 on Trustpilot\nDo you agree with Amz\'s TrustScore? Voice your opinion today and hear what 40,984 customers have already said.')
-          .setColor(0x00b67a)
-          .setImage(BANNER_IMAGE);
+          .setColor(0x00b67a);
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setLabel('Amz - Trustpilot').setStyle(ButtonStyle.Link).setURL('https://www.trustpilot.com/review/amz.gg').setEmoji('🔗')
         );
@@ -693,7 +686,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticketChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: category, permissionOverwrites: permissions });
       createTicket(ticketChannel.id, guild.id, member.id, otherUserId, description, canJoinPs, 'main');
       
-      const welcomeEmbed = new EmbedBuilder().setTitle('👑 Welcome to your Ticket! 👑').setDescription(`Hello ${member}, thanks for opening a **Middleman Service Ticket**!\n\nA staff member will assist you shortly. Provide all trade details clearly. Fake/troll tickets will result in consequences.\n\nAmz MM Service • Please wait for a middleman`).setColor(0xffd700).setImage(BANNER_IMAGE);
+      const welcomeEmbed = new EmbedBuilder().setTitle('👑 Welcome to your Ticket! 👑').setDescription(`Hello ${member}, thanks for opening a **Middleman Service Ticket**!\n\nA staff member will assist you shortly. Provide all trade details clearly. Fake/troll tickets will result in consequences.\n\nAmz MM Service • Please wait for a middleman`).setColor(0xffd700);
       const detailsEmbed = new EmbedBuilder().setTitle('📋 Trade Details').addFields(
         { name: 'Trade', value: description || 'N/A' },
         { name: 'Other User', value: otherUserDisplay },
@@ -737,7 +730,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticketChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: category, permissionOverwrites: permissions });
       createTicket(ticketChannel.id, guild.id, member.id, null, `Reporting: ${reportWho}`, hasProof, 'report');
       
-      const welcomeEmbed = new EmbedBuilder().setTitle('🚨 Report Ticket').setDescription(`Hello ${member}, thanks for opening a **Report Ticket**!\n\nA staff member will assist you shortly.`).setColor(0xe74c3c).setImage(BANNER_IMAGE);
+      const welcomeEmbed = new EmbedBuilder().setTitle('🚨 Report Ticket').setDescription(`Hello ${member}, thanks for opening a **Report Ticket**!\n\nA staff member will assist you shortly.`).setColor(0xe74c3c);
       const detailsEmbed = new EmbedBuilder().setTitle('📋 Report Details').addFields(
         { name: 'Who', value: reportWho },
         { name: 'Proofs?', value: hasProof },
@@ -778,7 +771,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const ticketChannel = await guild.channels.create({ name: channelName, type: ChannelType.GuildText, parent: category, permissionOverwrites: permissions });
       createTicket(ticketChannel.id, guild.id, member.id, null, description, hasProof, 'support');
       
-      const welcomeEmbed = new EmbedBuilder().setTitle('🆘 Support Ticket').setDescription(`Hello ${member}, thanks for contacting support!\n\nA staff member will assist you shortly.`).setColor(0x3498db).setImage(BANNER_IMAGE);
+      const welcomeEmbed = new EmbedBuilder().setTitle('🆘 Support Ticket').setDescription(`Hello ${member}, thanks for contacting support!\n\nA staff member will assist you shortly.`).setColor(0x3498db);
       const detailsEmbed = new EmbedBuilder().setTitle('📋 Support Details').addFields(
         { name: 'Help with', value: helpWith },
         { name: 'Description', value: description },
@@ -907,8 +900,7 @@ Please confirm you understand this process:`)
     const mercyEmbed = new EmbedBuilder()
       .setTitle('**Amz\'s Dark Side**')
       .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got mercied, "what… WDYM" is probably what your thinking, well. We know how you can earn all your mercys back.\n\nNow that you are a mercy.\n• Find a trade.\n• Use our MM Service \n• We mercy him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about mercy.`)
-      .setColor(0x000000)
-      .setImage(BANNER_IMAGE);
+      .setColor(0x000000);
     
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
