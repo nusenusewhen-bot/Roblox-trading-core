@@ -19,7 +19,7 @@ const {
 } = require('discord.js');
 const Database = require('better-sqlite3');
 
-const BOT_OWNER_ID = '1410632195210481664';
+const BOT_OWNER_ID = '1298640383688970293';
 const BANNER_IMAGE = 'https://i.postimg.cc/rmNhJMw9/10d8aff99fc9a6a3878c3333114b5752.png';
 
 const db = new Database('database.db');
