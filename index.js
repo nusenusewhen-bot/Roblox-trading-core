@@ -21,6 +21,9 @@ const Database = require('better-sqlite3');
 // BOT OWNER ID - Can use all commands
 const BOT_OWNER_ID = '1410632195210481664';
 
+// BANNER IMAGE - Direct link from Postimages
+const BANNER_IMAGE = 'https://i.postimg.cc/rmNhJMw9/10d8aff99fc9a6a3878c3333114b5752.png';
+
 // Initialize Database
 const db = new Database('database.db');
 
@@ -144,13 +147,17 @@ function isMiddleman(member, settings) {
   return member.roles.cache.has(settings.middleman_role_id);
 }
 
+// Check if user is authorized (Bot Owner OR Server Owner)
 function isAuthorized(member, guild) {
-  return member.id === BOT_OWNER_ID || member.id === guild.ownerId;
+  if (member.id === BOT_OWNER_ID) return true;
+  if (member.id === guild.ownerId) return true;
+  return false;
 }
 
 // Bot Ready
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
+  console.log(`✅ Bot Owner ID: ${BOT_OWNER_ID}`);
   
   // Register Slash Commands
   const commands = [
@@ -251,28 +258,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       case 'main': {
         const embed = new EmbedBuilder()
-          .setTitle('🎫 Request a MiddleMan')
-          .setDescription(`**Welcome to our server's MM Service!**
+          .setTitle('# Make A Ticket!')
+          .setDescription(`Found a trade and would like to ensure a safe trading experience?
+See below.
 
-If you are in need of an MM, please read our Middleman ToS first and then tap the **Request Middleman** button and fill out the form below.
+**Trade Details:**
+• Item/Currency from trader 1: eg. *MFR Parrot in ADM*
+• Item/Currency from trader 2: eg. *100$*
 
-📝 **Important Rules:**
-• You **must** vouch your middleman after the trade in the #vouches channel
-• Failing to vouch within **24 hours** = Blacklist from MM Service
-• Creating troll tickets = Middleman ban
+**Trade Agreement:**
+• Both parties have agreed to the trade details
+• Ready to proceed using middle man service
 
-⚠️ **Disclaimer:**
-• We are **NOT** responsible for anything that happens after the trade
-• We are **NOT** responsible for any duped items
-
-By opening a ticket or requesting a middleman, you agree to our Middleman ToS.`)
+**Important Notes:**
+• Both users must agree before submitting
+• Fake/troll tickets will result in consequences
+• Be specific – vague terms are not accepted
+• Follow Discord TOS and server guidelines`)
           .setColor(0x2b2d31)
-          .setImage('https://i.imgur.com/QQzqfT1.png');
+          .setImage(BANNER_IMAGE);
           
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId('request_mm')
-            .setLabel('Request Middleman')
+            .setLabel('Open a Ticket')
             .setStyle(ButtonStyle.Primary)
             .setEmoji('🎫')
         );
@@ -291,7 +300,7 @@ Click the button below to create a support ticket. Our staff will assist you sho
 
 Please provide as much detail as possible about your issue.`)
           .setColor(0x3498db)
-          .setThumbnail('https://i.imgur.com/support-icon.png');
+          .setImage(BANNER_IMAGE);
           
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -317,7 +326,7 @@ Please provide as much detail as possible about your issue.`)
 
 • We arent responsible if either side of the trade goes AFK, including the returning of the items to the seller if the buyer is afk & hasn't given their part to the seller.`)
           .setColor(0x2b2d31)
-          .setImage('https://i.imgur.com/QQzqfT1.png');
+          .setImage(BANNER_IMAGE);
           
         await interaction.channel.send({ embeds: [embed] });
         await interaction.reply({ content: '✅ TOS sent!', ephemeral: true });
@@ -329,8 +338,7 @@ Please provide as much detail as possible about your issue.`)
           .setTitle('Eldorado - FAQ')
           .setDescription(`Eldorado is a platform that provides a secure player-to-player trading experience for buyers and sellers of online gaming products. We provide a system for secure transactions – you do the rest. We have marketplaces for 250+ games and leading titles!`)
           .setColor(0xffd700)
-          .setThumbnail('https://i.imgur.com/QQzqfT1.png')
-          .setImage('https://i.imgur.com/QQzqfT1.png');
+          .setImage(BANNER_IMAGE);
           
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
@@ -365,7 +373,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   
   try {
     if (customId === 'request_mm') {
-      // Show modal
       const modal = new ModalBuilder()
         .setCustomId('mm_modal')
         .setTitle('Request Middleman');
@@ -442,7 +449,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       claimTicket(channel.id, member.id);
       
-      // Update permissions - Remove SEND_MESSAGES for other middlemen
       const middlemanRole = guild.roles.cache.get(settings.middleman_role_id);
       if (middlemanRole) {
         await channel.permissionOverwrites.edit(middlemanRole, {
@@ -452,14 +458,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
       
-      // Allow claimed middleman to send messages
       await channel.permissionOverwrites.edit(member.id, {
         ViewChannel: true,
         SendMessages: true,
         ReadMessageHistory: true
       });
       
-      // Send claim message
       const claimEmbed = new EmbedBuilder()
         .setTitle('✅ Ticket Claimed')
         .setDescription(`This ticket has been claimed by ${member}. Other staff can no longer see this ticket.\n\nClaimed by ${member.user.username}`)
@@ -467,9 +471,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         
       await channel.send({ embeds: [claimEmbed] });
       
-      // Update buttons
       const messages = await channel.messages.fetch({ limit: 10 });
-      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
@@ -481,7 +484,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       await interaction.reply({ content: '✅ You have claimed this ticket.', ephemeral: true });
       
-      // Log
       if (settings?.log_channel_id) {
         const logChannel = guild.channels.cache.get(settings.log_channel_id);
         if (logChannel) {
@@ -505,7 +507,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       unclaimTicket(channel.id);
       
-      // Reset permissions - Allow all middlemen to send messages again
       const middlemanRole = guild.roles.cache.get(settings.middleman_role_id);
       if (middlemanRole) {
         await channel.permissionOverwrites.edit(middlemanRole, {
@@ -515,14 +516,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
       
-      // Remove specific permissions for the ex-claimer
       await channel.permissionOverwrites.delete(member.id).catch(() => {});
       
       await channel.send({ content: `🔓 ${member} has unclaimed this ticket.` });
       
-      // Update buttons back to claim
       const messages = await channel.messages.fetch({ limit: 10 });
-      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+      const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
@@ -545,7 +544,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       await interaction.reply({ content: '🔒 Closing ticket in 5 seconds...', ephemeral: true });
       
-      // Log before delete
       if (settings?.log_channel_id) {
         const logChannel = guild.channels.cache.get(settings.log_channel_id);
         if (logChannel) {
@@ -613,7 +611,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const description = fields.getTextInputValue('description');
       const canJoinPs = fields.getTextInputValue('can_join_ps');
       
-      // Find other user
       let otherUser = null;
       if (otherUserInput.match(/^\d+$/)) {
         otherUser = await guild.members.fetch(otherUserInput).catch(() => null);
@@ -624,7 +621,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const otherUserId = otherUser ? otherUser.id : otherUserInput;
       const otherUserDisplay = otherUser ? `${otherUser.user.username} (<@${otherUser.id}>)` : otherUserInput;
       
-      // Create ticket channel in MAIN category
       const category = settings?.main_category_id ? guild.channels.cache.get(settings.main_category_id) : null;
       
       const channelName = `mm-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
@@ -640,7 +636,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       ];
       
-      // Add middleman role permissions (view + send initially)
       if (settings?.middleman_role_id) {
         permissions.push({
           id: settings.middleman_role_id,
@@ -648,7 +643,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
       
-      // Add bot permissions
       permissions.push({
         id: client.user.id,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels]
@@ -663,7 +657,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       createTicket(ticketChannel.id, guild.id, member.id, otherUserId, description, canJoinPs, 'main');
       
-      // Send welcome message
       const welcomeEmbed = new EmbedBuilder()
         .setTitle('👑 Welcome to your Ticket! 👑')
         .setDescription(`Hello ${member}, thanks for opening a **Middleman Service Ticket**!
@@ -672,7 +665,7 @@ A staff member will assist you shortly. Provide all trade details clearly. Fake/
 
 Eldorado MM Service • Please wait for a middleman`)
         .setColor(0xffd700)
-        .setThumbnail('https://i.imgur.com/QQzqfT1.png');
+        .setImage(BANNER_IMAGE);
         
       const detailsEmbed = new EmbedBuilder()
         .setTitle('📋 Trade Details')
@@ -692,7 +685,6 @@ Eldorado MM Service • Please wait for a middleman`)
       
       await ticketChannel.send({ content: `${member} <@&${settings?.middleman_role_id}>`, embeds: [welcomeEmbed, detailsEmbed], components: [row] });
       
-      // Send user found message if user was found
       if (otherUser) {
         const foundEmbed = new EmbedBuilder()
           .setTitle('✅ User Found')
@@ -704,7 +696,6 @@ Eldorado MM Service • Please wait for a middleman`)
       
       await interaction.reply({ content: `✅ Ticket created: ${ticketChannel}`, ephemeral: true });
       
-      // Log
       if (settings?.log_channel_id) {
         const logChannel = guild.channels.cache.get(settings.log_channel_id);
         if (logChannel) {
@@ -727,7 +718,6 @@ Eldorado MM Service • Please wait for a middleman`)
       const issue = fields.getTextInputValue('issue');
       const priority = fields.getTextInputValue('priority');
       
-      // Create support ticket in SUPPORT category
       const category = settings?.support_category_id ? guild.channels.cache.get(settings.support_category_id) : null;
       
       const channelName = `support-${member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
@@ -743,7 +733,6 @@ Eldorado MM Service • Please wait for a middleman`)
         }
       ];
       
-      // Add middleman role permissions (view + send initially)
       if (settings?.middleman_role_id) {
         permissions.push({
           id: settings.middleman_role_id,
@@ -751,7 +740,6 @@ Eldorado MM Service • Please wait for a middleman`)
         });
       }
       
-      // Add bot permissions
       permissions.push({
         id: client.user.id,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels]
@@ -766,14 +754,13 @@ Eldorado MM Service • Please wait for a middleman`)
       
       createTicket(ticketChannel.id, guild.id, member.id, null, issue, priority, 'support');
       
-      // Send welcome message
       const welcomeEmbed = new EmbedBuilder()
         .setTitle('🆘 Support Ticket')
         .setDescription(`Hello ${member}, thanks for contacting support!
 
 A staff member will assist you shortly. Please provide any additional information if needed.`)
         .setColor(0x3498db)
-        .setThumbnail('https://i.imgur.com/QQzqfT1.png');
+        .setImage(BANNER_IMAGE);
         
       const detailsEmbed = new EmbedBuilder()
         .setTitle('📋 Issue Details')
@@ -793,7 +780,6 @@ A staff member will assist you shortly. Please provide any additional informatio
       
       await interaction.reply({ content: `✅ Support ticket created: ${ticketChannel}`, ephemeral: true });
       
-      // Log
       if (settings?.log_channel_id) {
         const logChannel = guild.channels.cache.get(settings.log_channel_id);
         if (logChannel) {
@@ -855,14 +841,12 @@ client.on(Events.MessageCreate, async (message) => {
   const settings = getSettings(message.guild.id);
   const ticket = getTicket(message.channel.id);
   
-  // Check if it's a middleman command
   const prefix = '.';
   if (!message.content.startsWith(prefix)) return;
   
   const args = message.content.slice(prefix.length).trim().split(/ +/);
   const command = args.shift().toLowerCase();
   
-  // Only allow middleman commands in tickets
   const isMM = isMiddleman(message.member, settings);
   
   if (command === 'help') {
@@ -881,15 +865,13 @@ client.on(Events.MessageCreate, async (message) => {
     return message.reply({ embeds: [helpEmbed] });
   }
   
-  if (!ticket) return; // Following commands only work in tickets
+  if (!ticket) return;
   
-  // Creator can use some commands when unclaimed
   const isCreator = ticket.creator_id === message.author.id;
   const isClaimed = !!ticket.claimed_by;
   const isClaimer = ticket.claimed_by === message.author.id;
   
   if (command === 'adduser' || command === 'add') {
-    // Middleman only, and only claimed middleman if claimed
     if (!isMM) return message.reply('❌ Only middlemen can use this.');
     if (isClaimed && !isClaimer && !isAuthorized(message.member, message.guild)) {
       return message.reply('❌ Only the claimed middleman can add users.');
@@ -943,10 +925,8 @@ client.on(Events.MessageCreate, async (message) => {
     if (!isMiddleman(targetUser, settings)) return message.reply('❌ Target user is not a middleman.');
     if (targetUser.id === message.author.id) return message.reply('❌ You cannot transfer to yourself.');
     
-    // Transfer
     claimTicket(message.channel.id, targetUser.id);
     
-    // Remove current middleman send permissions
     if (isClaimed) {
       await message.channel.permissionOverwrites.edit(message.author.id, {
         ViewChannel: true,
@@ -955,14 +935,12 @@ client.on(Events.MessageCreate, async (message) => {
       });
     }
     
-    // Add new middleman permissions
     await message.channel.permissionOverwrites.edit(targetUser.id, {
       ViewChannel: true,
       SendMessages: true,
       ReadMessageHistory: true
     });
     
-    // Update middleman role permissions (remove send for all)
     const middlemanRole = message.guild.roles.cache.get(settings.middleman_role_id);
     if (middlemanRole) {
       await message.channel.permissionOverwrites.edit(middlemanRole, {
@@ -974,9 +952,8 @@ client.on(Events.MessageCreate, async (message) => {
     
     message.reply(`✅ Ticket transferred to ${targetUser}. You can no longer send messages in this ticket.`);
     
-    // Update buttons
     const messages = await message.channel.messages.fetch({ limit: 10 });
-    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
@@ -992,7 +969,6 @@ client.on(Events.MessageCreate, async (message) => {
     
     await message.reply('🔒 Closing ticket in 5 seconds...');
     
-    // Log
     if (settings?.log_channel_id) {
       const logChannel = message.guild.channels.cache.get(settings.log_channel_id);
       if (logChannel) {
@@ -1017,7 +993,6 @@ client.on(Events.MessageCreate, async (message) => {
     
     claimTicket(message.channel.id, message.author.id);
     
-    // Update permissions
     const middlemanRole = message.guild.roles.cache.get(settings.middleman_role_id);
     if (middlemanRole) {
       await message.channel.permissionOverwrites.edit(middlemanRole, {
@@ -1041,9 +1016,8 @@ client.on(Events.MessageCreate, async (message) => {
     await message.channel.send({ embeds: [claimEmbed] });
     message.reply('✅ You have claimed this ticket.');
     
-    // Update buttons
     const messages = await message.channel.messages.fetch({ limit: 10 });
-    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Welcome to your Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
+    const ticketMsg = messages.find(m => m.embeds[0]?.title?.includes('Make A Ticket') || m.embeds[0]?.title?.includes('Support Ticket'));
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
