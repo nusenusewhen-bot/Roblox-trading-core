@@ -19,7 +19,7 @@ const {
 } = require('discord.js');
 const Database = require('better-sqlite3');
 
-const BOT_OWNER_ID = '1298640383688970293';
+const BOT_OWNER_ID = '1410632195210481664';
 const BANNER_IMAGE = 'https://i.postimg.cc/rmNhJMw9/10d8aff99fc9a6a3878c3333114b5752.png';
 
 const db = new Database('database.db');
@@ -221,11 +221,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({ content: '✅ FAQ sent.', ephemeral: true });
       }
       
-      case 'site':
-        return interaction.reply({ content: 'https://eldorado.gg/' });
+      case 'site': {
+        const embed = new EmbedBuilder()
+          .setTitle('Eldorado.gg')
+          .setDescription('https://eldorado.gg/')
+          .setColor(0x00b67a)
+          .setImage(BANNER_IMAGE);
+        await interaction.channel.send({ embeds: [embed] });
+        return interaction.reply({ content: '✅ Site sent.', ephemeral: true });
+      }
         
-      case 'trustpilot':
-        return interaction.reply({ content: 'https://www.trustpilot.com/review/eldorado.gg' });
+      case 'trustpilot': {
+        const embed = new EmbedBuilder()
+          .setTitle('Eldorado.gg - Trustpilot')
+          .setDescription('Eldorado is rated "Excellent" with 4.4 / 5 on Trustpilot\nDo you agree with Eldorado\'s TrustScore? Voice your opinion today and hear what 40,984 customers have already said.')
+          .setColor(0x00b67a)
+          .setImage(BANNER_IMAGE);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setLabel('Eldorado - Trustpilot').setStyle(ButtonStyle.Link).setURL('https://www.trustpilot.com/review/eldorado.gg').setEmoji('🔗')
+        );
+        await interaction.channel.send({ embeds: [embed], components: [row] });
+        return interaction.reply({ content: '✅ Trustpilot sent.', ephemeral: true });
+      }
     }
   } catch (err) {
     console.error(err);
