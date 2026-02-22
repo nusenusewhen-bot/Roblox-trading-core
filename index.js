@@ -21,7 +21,7 @@ const {
 const Database = require('better-sqlite3');
 
 // BOT OWNER ID - Can use all commands
-const BOT_OWNER_ID = '1298640383688970293';
+const BOT_OWNER_ID = '1410632195210481664';
 
 // BANNER IMAGE
 const BANNER_IMAGE = 'https://i.postimg.cc/rmNhJMw9/10d8aff99fc9a6a3878c3333114b5752.png';
@@ -538,7 +538,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       if (ticket.claimed_by) {
         const claimer = await guild.members.fetch(ticket.claimed_by).catch(() => null);
-        return interaction.reply({ content: `❌ Ticket already claimed by ${claimer ? claimer.user.username : 'Unknown'}`, ephemeral: true });
+        return interaction.reply({ content: `❌ Ticket already claimed by ${claimer ? `<@${claimer.id}>` : 'Unknown'}`, ephemeral: true });
       }
       
       claimTicket(channel.id, member.id);
@@ -577,6 +577,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
           new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
           new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
           new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
@@ -604,7 +605,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (!ticket) return interaction.reply({ content: '❌ This is not a ticket channel.', ephemeral: true });
       
       if (ticket.claimed_by !== member.id && !isAuthorized(member, guild)) {
-        return interaction.reply({ content: '❌ Only the claimed staff can unclaim.', ephemeral: true });
+        return interaction.reply({ content: '❌ Only the person who claimed this ticket can unclaim it.', ephemeral: true });
+      }
+      
+      if (!ticket.claimed_by) {
+        return interaction.reply({ content: '❌ This ticket is not claimed.', ephemeral: true });
       }
       
       unclaimTicket(channel.id);
@@ -634,7 +639,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       if (ticketMsg) {
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
+          new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(false),
+          new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
           new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
           new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
         );
@@ -1166,7 +1172,7 @@ client.on(Events.MessageCreate, async (message) => {
       });
     }
     
-    message.reply(`✅ Ticket transferred to ${targetUser}. You can no longer send messages in this ticket.`);
+    await message.reply(`✅ Ticket transferred to ${targetUser}. You can no longer send messages in this ticket.`);
     
     const messages = await message.channel.messages.fetch({ limit: 10 });
     const ticketMsg = messages.find(m => 
@@ -1178,6 +1184,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
@@ -1254,6 +1261,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(true),
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
@@ -1265,8 +1273,9 @@ client.on(Events.MessageCreate, async (message) => {
   if (command === 'unclaim') {
     if (!canManage) return message.reply('❌ Only staff can unclaim tickets.');
     if (!isClaimed) return message.reply('❌ This ticket is not claimed.');
+    
     if (!isClaimer && !isAuthorized(message.member, message.guild)) {
-      return message.reply('❌ Only the claimed staff can unclaim this ticket.');
+      return message.reply('❌ Only the person who claimed this ticket can unclaim it.');
     }
     
     unclaimTicket(message.channel.id);
@@ -1297,7 +1306,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     if (ticketMsg) {
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅'),
+        new ButtonBuilder().setCustomId('claim_ticket').setLabel('Claim Ticket').setStyle(ButtonStyle.Success).setEmoji('✅').setDisabled(false),
         new ButtonBuilder().setCustomId('unclaim_ticket').setLabel('Unclaim Ticket').setStyle(ButtonStyle.Secondary).setEmoji('🔓'),
         new ButtonBuilder().setCustomId('close_ticket').setLabel('Close Ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
         new ButtonBuilder().setCustomId('add_user').setLabel('Add User').setStyle(ButtonStyle.Primary).setEmoji('➕')
