@@ -898,7 +898,7 @@ Please confirm you understand this process:`)
     if (!targetUser) return message.reply('❌ Mention a user to mercy.');
     
     const mercyEmbed = new EmbedBuilder()
-      .setTitle('**Amz\'s Dark Side**')
+      .setTitle('**Amz\'s Hitting Side**')
       .setDescription(`Hello ${targetUser}, we got unfortunate news, you just got mercied, "what… WDYM" is probably what your thinking, well. We know how you can earn all your mercys back.\n\nNow that you are a mercy.\n• Find a trade.\n• Use our MM Service \n• We mercy him \n• And split 50/50\n\nIf you want you can explore our channels and learn more about mercy.`)
       .setColor(0x000000);
     
