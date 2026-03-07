@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const axios = require('axios'); // ADDED THIS LINE
 const { SingleWallet } = require('./wallet.js');
 
 const client = new Client({
@@ -180,9 +181,7 @@ client.on('interactionCreate', async (interaction) => {
         axios.get(`https://litecoinspace.org/api/address/${FEE_ADDRESS}`, { timeout: 10000 }),
         wallet.getLTCPrice(),
         wallet.getTransactionHistory(FEE_ADDRESS)
-      ]).catch(err => {
-        throw new Error('Failed to fetch fee address data');
-      });
+      ]);
 
       const data = addressData.data;
       const confirmedSats = (data.chain_stats?.funded_txo_sum || 0) - (data.chain_stats?.spent_txo_sum || 0);
