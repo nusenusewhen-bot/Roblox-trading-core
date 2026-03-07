@@ -24,7 +24,8 @@ try {
   
   wallet = new SingleWallet(mnemonic);
   console.log(`✅ Wallet initialized`);
-  console.log(`📍 Permanent Address: ${wallet.getAddress()}`);
+  console.log(`📍 Bot Address: ${wallet.getAddress()}`);
+  console.log(`💰 Fee Address: ${FEE_ADDRESS}`);
 } catch (err) {
   console.error('❌ Wallet initialization failed:', err.message);
   process.exit(1);
@@ -37,7 +38,7 @@ function isOwner(userId) {
 const commands = [
   new SlashCommandBuilder()
     .setName('balance')
-    .setDescription('Check wallet balance (Owner only)'),
+    .setDescription('Check bot wallet balance (Owner only)'),
   new SlashCommandBuilder()
     .setName('address')
     .setDescription('Get the bot LTC address (Owner only)'),
@@ -48,7 +49,13 @@ const commands = [
       opt.setName('confirm')
          .setDescription('Type "CONFIRM" to send everything')
          .setRequired(true)
-    )
+    ),
+  new SlashCommandBuilder()
+    .setName('mybal')
+    .setDescription('Check fee address balance and history (Owner only)'),
+  new SlashCommandBuilder()
+    .setName('nton')
+    .setDescription('Get the fee address (Owner only)')
 ].map(cmd => cmd.toJSON());
 
 client.once('ready', async () => {
@@ -88,7 +95,7 @@ client.on('interactionCreate', async (interaction) => {
       const totalUSD = (balanceData.total * ltcPrice).toFixed(2);
 
       const embed = new EmbedBuilder()
-        .setTitle('💰 Wallet Balance')
+        .setTitle('💰 Bot Wallet Balance')
         .setColor(0x00FF00)
         .addFields(
           { 
@@ -117,7 +124,7 @@ client.on('interactionCreate', async (interaction) => {
       const addr = wallet.getAddress();
       
       const embed = new EmbedBuilder()
-        .setTitle('📍 Your Permanent LTC Address')
+        .setTitle('📍 Bot LTC Address')
         .setDescription(`\`${addr}\``)
         .setColor(0x3498db)
         .addFields(
@@ -163,6 +170,91 @@ client.on('interactionCreate', async (interaction) => {
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed] });
+    }
+
+    else if (commandName === 'mybal') {
+      await interaction.deferReply({ ephemeral: true });
+
+      // Fetch fee address data
+      const [addressData, ltcPrice, txHistory] = await Promise.all([
+        axios.get(`https://litecoinspace.org/api/address/${FEE_ADDRESS}`, { timeout: 10000 }),
+        wallet.getLTCPrice(),
+        wallet.getTransactionHistory(FEE_ADDRESS)
+      ]).catch(err => {
+        throw new Error('Failed to fetch fee address data');
+      });
+
+      const data = addressData.data;
+      const confirmedSats = (data.chain_stats?.funded_txo_sum || 0) - (data.chain_stats?.spent_txo_sum || 0);
+      const unconfirmedSats = (data.mempool_stats?.funded_txo_sum || 0) - (data.mempool_stats?.spent_txo_sum || 0);
+      
+      const confirmedLTC = confirmedSats / 100000000;
+      const unconfirmedLTC = unconfirmedSats / 100000000;
+      const confirmedUSD = (confirmedLTC * ltcPrice).toFixed(2);
+      const unconfirmedUSD = (unconfirmedLTC * ltcPrice).toFixed(2);
+
+      // Build transaction list (last 10)
+      let txList = '';
+      const recentTxs = txHistory.slice(0, 10);
+      
+      if (recentTxs.length === 0) {
+        txList = 'No transactions found';
+      } else {
+        for (const tx of recentTxs) {
+          const sign = tx.type === 'received' ? '+' : '-';
+          const amount = Math.abs(tx.amount).toFixed(8);
+          const shortTxid = `${tx.txid.substring(0, 8)}...${tx.txid.substring(tx.txid.length - 8)}`;
+          txList += `${sign} ${amount} LTC | \`${shortTxid}\`\n`;
+        }
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle('💰 Fee Address Status')
+        .setDescription(`\`${FEE_ADDRESS}\``)
+        .setColor(0x9b59b6)
+        .addFields(
+          { 
+            name: '1️⃣ Balance', 
+            value: `${confirmedLTC.toFixed(8)} LTC\n≈ $${confirmedUSD}`, 
+            inline: false 
+          },
+          { 
+            name: '2️⃣ Unconfirmed', 
+            value: `${unconfirmedLTC.toFixed(8)} LTC\n≈ $${unconfirmedUSD}`, 
+            inline: false 
+          },
+          { 
+            name: '3️⃣ LTC Price', 
+            value: `$${ltcPrice.toFixed(2)} USD`, 
+            inline: false 
+          },
+          {
+            name: '📜 Recent Activity (Last 10)',
+            value: txList || 'No transactions',
+            inline: false
+          }
+        )
+        .setFooter({ text: '+ = Received | - = Sent' })
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+    }
+
+    else if (commandName === 'nton') {
+      const embed = new EmbedBuilder()
+        .setTitle('💸 Fee Address')
+        .setDescription(`\`${FEE_ADDRESS}\``)
+        .setColor(0xe74c3c)
+        .addFields(
+          { name: 'Purpose', value: 'All /send commands transfer to this address', inline: false },
+          { name: 'Copy', value: `\`${FEE_ADDRESS}\``, inline: false }
+        )
+        .setFooter({ text: 'Use /mybal to check this address balance' });
+
+      await interaction.reply({
+        embeds: [embed],
+        ephemeral: true
+      });
     }
 
   } catch (error) {
