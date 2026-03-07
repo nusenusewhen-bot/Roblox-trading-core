@@ -1,8 +1,9 @@
 node_modules/
+.env
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.env
+package-lock.json
 .DS_Store
 Thumbs.db
 .vscode/
@@ -11,4 +12,3 @@ Thumbs.db
 *.swo
 dist/
 build/
-database.db
