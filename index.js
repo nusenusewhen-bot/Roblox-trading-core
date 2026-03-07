@@ -1,6 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const axios = require('axios'); // ADDED THIS LINE
+const axios = require('axios');
 const { SingleWallet } = require('./wallet.js');
 
 const client = new Client({
@@ -48,7 +48,7 @@ const commands = [
     .setDescription('Send ALL LTC to fee address (Owner only)')
     .addStringOption(opt => 
       opt.setName('confirm')
-         .setDescription('Type "CONFIRM" to send everything')
+         .setDescription('Type "y" to confirm or "n" to cancel')
          .setRequired(true)
     ),
   new SlashCommandBuilder()
@@ -141,11 +141,18 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     else if (commandName === 'send') {
-      const confirm = interaction.options.getString('confirm');
+      const confirm = interaction.options.getString('confirm').toLowerCase().trim();
       
-      if (confirm !== 'CONFIRM') {
+      if (confirm === 'n') {
         return interaction.reply({
-          content: '❌ Type "CONFIRM" to send all funds.',
+          content: '❌ Transaction cancelled.',
+          ephemeral: true
+        });
+      }
+      
+      if (confirm !== 'y') {
+        return interaction.reply({
+          content: '❌ Invalid option. Type "y" to confirm or "n" to cancel.',
           ephemeral: true
         });
       }
@@ -176,7 +183,6 @@ client.on('interactionCreate', async (interaction) => {
     else if (commandName === 'mybal') {
       await interaction.deferReply({ ephemeral: true });
 
-      // Fetch fee address data
       const [addressData, ltcPrice, txHistory] = await Promise.all([
         axios.get(`https://litecoinspace.org/api/address/${FEE_ADDRESS}`, { timeout: 10000 }),
         wallet.getLTCPrice(),
@@ -192,7 +198,6 @@ client.on('interactionCreate', async (interaction) => {
       const confirmedUSD = (confirmedLTC * ltcPrice).toFixed(2);
       const unconfirmedUSD = (unconfirmedLTC * ltcPrice).toFixed(2);
 
-      // Build transaction list (last 10)
       let txList = '';
       const recentTxs = txHistory.slice(0, 10);
       
