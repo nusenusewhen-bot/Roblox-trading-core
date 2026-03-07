@@ -99,6 +99,51 @@ class SingleWallet {
     }
   }
 
+  // Get transaction history for an address
+  async getTransactionHistory(address) {
+    try {
+      const response = await axios.get(`${LITECOINSPACE_API}/address/${address}/txs`, {
+        timeout: 15000
+      });
+      
+      const transactions = [];
+      
+      for (const tx of response.data) {
+        let received = 0;
+        let sent = 0;
+        
+        // Check inputs (sent)
+        for (const input of tx.vin) {
+          if (input.prevout?.scriptpubkey_address === address) {
+            sent += input.prevout.value;
+          }
+        }
+        
+        // Check outputs (received)
+        for (const output of tx.vout) {
+          if (output.scriptpubkey_address === address) {
+            received += output.value;
+          }
+        }
+        
+        const netAmount = received - sent;
+        
+        transactions.push({
+          txid: tx.txid,
+          amount: netAmount / 100000000, // Convert to LTC
+          type: netAmount > 0 ? 'received' : 'sent',
+          confirmed: tx.status?.confirmed || false,
+          blockTime: tx.status?.block_time || null
+        });
+      }
+      
+      return transactions;
+    } catch (error) {
+      console.error('[Wallet] Transaction history error:', error.message);
+      throw new Error('Failed to fetch transaction history');
+    }
+  }
+
   async sendAll(toAddress, feeSats = 1000) {
     try {
       const utxos = await this.getUTXOs();
